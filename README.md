@@ -40,8 +40,14 @@ uv run uvicorn mcp_demo.app:create_app \
 
 Anschliessend:
 
-- `http://127.0.0.1:8000/demo` - Experiment-UI mit Run-Buttons.
-- `http://127.0.0.1:8000/demo/events` - Telemetry-Timeline.
+- `http://127.0.0.1:8000/demo` - Experiment-UI mit Run-Buttons,
+  Inspector-Deep-Link je Karte und einem Live-SSE-Panel rechts unten.
+- `http://127.0.0.1:8000/demo/compare/<experiment-id>` - Side-by-Side
+  Vergleich vulnerable vs. defended mit Tool-Description-Diff,
+  DemoResult-Pills, Tools-Liste pro Modus und Telemetry-Events.
+- `http://127.0.0.1:8000/demo/events` - Telemetry-Timeline (statisch).
+- `http://127.0.0.1:8000/demo/events/stream` - SSE-Push der
+  ImpactEvents in Echtzeit; das `/demo`-UI subscribed darauf.
 - `http://127.0.0.1:8000/healthz` und `/readyz` - Probes.
 
 ### Docker
@@ -344,6 +350,55 @@ sanitised Description und enforce-t die zugehoerige Policy.
 | `agent-traps-subagent-spawning` | *(only `run_demo(spawn_source)`)* | `untrusted_resource_subagent_spawn_policy` |
 | `agent-traps-approval-fatigue` | *(only `run_demo`)* | `risk_differentiated_approval_policy` |
 | `agent-traps-sybil-and-fragments` | *(only `run_demo`)* | `sybil_and_fragment_composition_policy` |
+
+### UX-Oberflaechen: Compare, Live-Events, Inspector-Deep-Link
+
+Drei Oberflaechen machen die Verwundbarkeits-Demos fuer Nutzer
+nachvollziehbar, ohne dass man die JSONL-Artefakte direkt lesen muss:
+
+**Side-by-Side-Vergleich** unter
+`GET /demo/compare/<experiment-id>` (z. B.
+`/demo/compare/remote-direct-poisoning`):
+
+- Stoesst beide Modi seriell an (`compare-vuln-<id>` und
+  `compare-def-<id>` als Session-IDs).
+- Holt `tools/list` von beiden FastMCP-Servern und zeigt die
+  Tool-Description des narrativ relevanten Tools als zeilenweisen
+  Diff (poisoned links, sanitised rechts).
+- Rendert pro Modus das `DemoResult` als Pills
+  (`violation_detected`, `secret_exfiltrated`, `blocked_by`),
+  die komplette Tools-Liste mit `inputSchema`-Disclosure und die
+  zur Session gehoerenden Telemetrie-Events.
+- Jede Karte auf `/demo` linkt direkt auf die zugehoerige
+  Compare-Seite.
+
+**Live-Telemetrie-Stream** unter
+`GET /demo/events/stream`:
+
+- Liefert SSE (`text/event-stream`) mit einem initialen
+  `event: ready` und anschliessend pro `ImpactEvent` einem
+  `event: impact`-Frame (JSON-Payload identisch zu
+  `var/telemetry.jsonl`).
+- `ImpactLedger` haelt eine Subscriber-Liste; `record()` faechert
+  jeden Event ohne zu blockieren auf alle registrierten Queues.
+- Das `/demo`-UI bindet einen `EventSource`-Subscriber ein und
+  zeigt die letzten 50 Events im fixen Panel rechts unten,
+  blockierte Decisions farblich hervorgehoben.
+- Heartbeats alle 15 s halten Proxies offen; Disconnect raeumt
+  die Subscription serverseitig im `finally`-Block ab.
+
+**MCP Inspector Deep-Links** auf jeder Karte und der Compare-Seite:
+
+- Disclosure `Open in MCP Inspector` zeigt die absolute URL des
+  Mount-Pfads pro Modus, verankert am tatsaechlichen Origin des
+  aktuellen Browsers (kein `127.0.0.1` hartkodiert).
+- Copy-Button kopiert die URL in die Zwischenablage.
+- Inspector wird nicht eingebettet - er ist eine Node-App. Die
+  Karte zeigt das Launch-Snippet
+  `npx @modelcontextprotocol/inspector`; der Nutzer paste-ed dann
+  die URL als Streamable-HTTP-Server in seine lokale Inspector-
+  Instanz und sieht `tools/list`, Tool-Descriptions und JSON-RPC-
+  Frames live.
 
 ### Defaults und Override
 
