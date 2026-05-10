@@ -1,0 +1,23 @@
+id: remote-filesystem-sandbox-escape
+title: Filesystem MCP sandbox escape (path validation bypass)
+phase: expansion-2025-2026
+owasp:
+  - MCP05
+  - MCP01
+mcp_surfaces:
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/telemetry.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://embracethered.com/blog/posts/2025/anthropic-filesystem-mcp-server-bypass/
+  - https://cymulate.com/blog/cve-2025-53109-53110-escaperoute-anthropic/
