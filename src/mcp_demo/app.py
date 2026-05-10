@@ -155,6 +155,7 @@ from mcp_demo.experiments.tool_shadowing import (
 from mcp_demo.shared.impact import ImpactLedger
 from mcp_demo.shared.results import DemoResult
 from mcp_demo.shared.telemetry import TelemetryView
+from mcp_demo.web.compare import build_compare_router
 from mcp_demo.web.landing import render_landing_page
 from mcp_demo.web.routes import build_demo_router
 
@@ -188,6 +189,9 @@ def create_app(
     # context-managers under a single AsyncExitStack tied to FastAPI's
     # lifespan.
     mcp_servers: list[FastMCP] = []
+    # Per-experiment lookup so the compare page can introspect each
+    # server (tools/list, instructions) without going through HTTP.
+    mcp_servers_by_experiment: dict[str, dict[str, FastMCP]] = {}
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -223,6 +227,7 @@ def create_app(
             server_version=settings.server_version,
             allowed_origins=settings.allowed_origins,
         )
+        mcp_servers_by_experiment[experiment_id] = dict(servers)
         for mode, server in servers.items():
             app.mount(
                 f"/mcp/{experiment_id.removeprefix('remote-')}/{mode}",
@@ -606,6 +611,8 @@ def create_app(
         )
 
     app.state.runtimes = runtimes
+    app.state.scenario_runners = scenario_runners
+    app.state.mcp_servers_by_experiment = mcp_servers_by_experiment
     app.state.telemetry = TelemetryView(ledgers)
 
     @app.get("/", include_in_schema=False)
@@ -640,5 +647,6 @@ def create_app(
             registry=registry,
         )
     )
+    app.include_router(build_compare_router(registry=registry))
 
     return app

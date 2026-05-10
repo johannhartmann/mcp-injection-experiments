@@ -101,6 +101,7 @@ def _render_index(registry: ExperimentRegistry) -> str:
         )
         owasp = ", ".join(manifest.owasp)
         action = f"/demo/scenario/{manifest.id}"
+        compare_href = f"/demo/compare/{manifest.id}"
         cards.append(
             f"<section class='card' data-experiment='{manifest.id}'>"
             f"<h2>{manifest.title}</h2>"
@@ -114,6 +115,8 @@ def _render_index(registry: ExperimentRegistry) -> str:
             f"data-mode='defended' data-action-mode='mode=defended'>"
             f"<button type='submit' name='mode' value='defended'>"
             f"Run defended</button></form>"
+            f"<a class='compare-link' href='{compare_href}'>"
+            f"Compare side-by-side &rarr;</a>"
             f"{impact_block}"
             f"</section>"
         )
@@ -129,6 +132,11 @@ def _render_index(registry: ExperimentRegistry) -> str:
         "form{display:inline-block;margin-right:0.5rem;}"
         "button{padding:0.4rem 0.8rem;border:1px solid #888;border-radius:4px;"
         "cursor:pointer;}"
+        ".compare-link{display:inline-block;margin-left:0.6rem;"
+        "padding:0.4rem 0.6rem;color:#246;text-decoration:none;"
+        "border:1px solid #cde;border-radius:4px;background:#eef6ff;"
+        "font-size:0.85rem;}"
+        ".compare-link:hover{background:#dceaff;}"
         "ul{margin:0.4rem 0 0 1.2rem;font-size:0.9rem;}"
         "</style></head><body>"
         "<h1>MCP Demo Experiments</h1>"
