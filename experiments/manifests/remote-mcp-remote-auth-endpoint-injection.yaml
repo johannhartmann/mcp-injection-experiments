@@ -1,0 +1,26 @@
+id: remote-mcp-remote-auth-endpoint-injection
+title: mcp-remote OAuth metadata command-injection (CVE-2025-6514 inspired)
+phase: expansion-2025-2026
+owasp:
+  - MCP01
+  - MCP07
+agent_traps:
+  - Behavioural Control
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - sandbox/effects/auth-endpoint-command-proof-<session>.txt
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://nvd.nist.gov/vuln/detail/CVE-2025-6514
+  - https://jfrog.com/blog/2025-6514-critical-mcp-remote-rce-vulnerability/
