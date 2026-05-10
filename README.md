@@ -1,5 +1,14 @@
 # MCP HTTP Streaming Online Demo - Claude Code Prompt Pack
 
+> **Warnung.** Diese Demo-Suite ist ausschliesslich fuer didaktische
+> Zwecke gedacht. Sie darf **nur** mit Mock-Daten, Canary-Werten und den
+> mitgelieferten sicheren Defaults betrieben werden. Echte Secrets,
+> echte Konfig-Dateien, echte Drittanbieter-APIs oder echte
+> Netzwerkziele duerfen nie in die Demo-Zone gelangen. Public-Mode
+> nur hinter einem Reverse-Proxy mit HTTPS und nur, wenn
+> `validate_for_public_mode()` durchlaeuft. Details in
+> `docs/security-review.md` und `docs/deployment.md`.
+
 Dieses Prompt-Pack ist dafuer gedacht, das Repository `johannhartmann/mcp-injection-experiments` schrittweise in eine sichere Online-Demo-Suite umzubauen.
 
 Zielbild:
