@@ -259,6 +259,11 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
         )
 
         slug = experiment_id.removeprefix("remote-")
+        base_url = (
+            request.headers.get("origin") or str(request.base_url).rstrip("/")
+        ).rstrip("/")
+        mcp_v_url = f"{base_url}/mcp/{slug}/vulnerable/"
+        mcp_d_url = f"{base_url}/mcp/{slug}/defended/"
 
         body = (
             "<!doctype html><html><head>"
@@ -272,8 +277,15 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
             f"<h1>{html.escape(manifest.title)}</h1>"
             f'<div class="badges">{owasp_badges}{trap_badges}{surface_badges}</div>'
             f'<div class="kv">MCP mounts: '
-            f'<code>/mcp/{slug}/vulnerable/</code> &middot; '
-            f'<code>/mcp/{slug}/defended/</code></div>'
+            f'<code>{html.escape(mcp_v_url)}</code> &middot; '
+            f'<code>{html.escape(mcp_d_url)}</code></div>'
+            "<details class='kv' style='margin-top:0.5rem'>"
+            "<summary>Open in MCP Inspector</summary>"
+            "<p>Run <code>npx @modelcontextprotocol/inspector</code> "
+            "locally and paste either URL above as a Streamable HTTP "
+            "server. Inspector then surfaces the live <code>tools/list</code>, "
+            "tool descriptions, and round-trip JSON-RPC frames against "
+            "this experiment.</p></details>"
             f"{diff_block}"
             '<div class="cols" style="margin-top:1rem">'
             '<div class="col vuln">'

@@ -76,7 +76,17 @@ def _render_html_events(events: list[dict[str, Any]]) -> str:
     )
 
 
-def _render_index(registry: ExperimentRegistry) -> str:
+def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
+    """Render the experiment cards.
+
+    ``base_url`` is the absolute origin a real browser would see (e.g.
+    ``http://127.0.0.1:8000``). It is interpolated into the
+    "Open in Inspector" snippet on each card so users can copy the
+    URL of the running demo verbatim into a local
+    ``@modelcontextprotocol/inspector`` instance.
+    """
+
+    base_url = base_url.rstrip("/")
     cards: list[str] = []
     for manifest in registry.all():
         impact_rows: list[str] = []
@@ -102,6 +112,27 @@ def _render_index(registry: ExperimentRegistry) -> str:
         owasp = ", ".join(manifest.owasp)
         action = f"/demo/scenario/{manifest.id}"
         compare_href = f"/demo/compare/{manifest.id}"
+        slug = manifest.id.removeprefix("remote-")
+        mcp_v_url = f"{base_url}/mcp/{slug}/vulnerable/"
+        mcp_d_url = f"{base_url}/mcp/{slug}/defended/"
+        inspector_block = (
+            "<details class='inspector'>"
+            "<summary>Open in MCP Inspector</summary>"
+            "<p>Launch a local Inspector instance and paste one of the "
+            "URLs below as a Streamable HTTP server:</p>"
+            "<pre><code>npx @modelcontextprotocol/inspector</code></pre>"
+            "<ul class='inspector-urls'>"
+            f"<li><strong>vulnerable:</strong> "
+            f"<code class='copy' data-copy='{mcp_v_url}'>{mcp_v_url}</code> "
+            f"<button type='button' class='copy-btn' "
+            f"data-copy-target='{mcp_v_url}'>copy</button></li>"
+            f"<li><strong>defended:</strong> "
+            f"<code class='copy' data-copy='{mcp_d_url}'>{mcp_d_url}</code> "
+            f"<button type='button' class='copy-btn' "
+            f"data-copy-target='{mcp_d_url}'>copy</button></li>"
+            "</ul>"
+            "</details>"
+        )
         cards.append(
             f"<section class='card' data-experiment='{manifest.id}'>"
             f"<h2>{manifest.title}</h2>"
@@ -117,6 +148,7 @@ def _render_index(registry: ExperimentRegistry) -> str:
             f"Run defended</button></form>"
             f"<a class='compare-link' href='{compare_href}'>"
             f"Compare side-by-side &rarr;</a>"
+            f"{inspector_block}"
             f"{impact_block}"
             f"</section>"
         )
@@ -137,6 +169,18 @@ def _render_index(registry: ExperimentRegistry) -> str:
         "border:1px solid #cde;border-radius:4px;background:#eef6ff;"
         "font-size:0.85rem;}"
         ".compare-link:hover{background:#dceaff;}"
+        ".inspector{margin-top:0.6rem;font-size:0.85rem;}"
+        ".inspector summary{cursor:pointer;color:#246;}"
+        ".inspector pre{background:#f5f7fa;border:1px solid #e0e3e8;"
+        "padding:0.4rem 0.6rem;border-radius:4px;font-size:0.8rem;}"
+        ".inspector-urls{list-style:none;padding-left:0;font-size:0.8rem;}"
+        ".inspector-urls li{margin:0.25rem 0;display:flex;align-items:center;gap:0.4rem;}"
+        ".inspector-urls code{flex:1;background:#f5f7fa;padding:0.2rem 0.4rem;"
+        "border-radius:3px;border:1px solid #e0e3e8;font-size:0.75rem;"
+        "overflow-x:auto;}"
+        ".copy-btn{padding:0.2rem 0.5rem;font-size:0.75rem;border:1px solid #ccc;"
+        "background:#fff;border-radius:3px;cursor:pointer;}"
+        ".copy-btn.copied{background:#dcfce7;border-color:#6c7;color:#064;}"
         "ul{margin:0.4rem 0 0 1.2rem;font-size:0.9rem;}"
         "#live-feed{position:fixed;right:1rem;bottom:1rem;width:340px;"
         "max-height:50vh;overflow-y:auto;background:#fff;border:1px solid #cdd;"
@@ -182,6 +226,18 @@ def _render_index(registry: ExperimentRegistry) -> str:
         " while(list.children.length>50){list.removeChild(list.lastChild);}"
         "});"
         "})();"
+        "document.addEventListener('click',function(e){"
+        " var btn=e.target.closest('.copy-btn');"
+        " if(!btn) return;"
+        " var v=btn.getAttribute('data-copy-target');"
+        " if(navigator.clipboard&&navigator.clipboard.writeText){"
+        "  navigator.clipboard.writeText(v).then(function(){"
+        "   btn.classList.add('copied');btn.textContent='copied';"
+        "   setTimeout(function(){btn.classList.remove('copied');"
+        "    btn.textContent='copy';},1500);"
+        "  });"
+        " }"
+        "});"
         "</script>"
         "</body></html>"
     )
@@ -201,7 +257,12 @@ def build_demo_router(
     async def index(request: Request) -> Response:
         if not _origin_ok(request):
             return _forbidden("origin not allowlisted")
-        return HTMLResponse(_render_index(registry))
+        # Build the canonical base URL the user is actually browsing
+        # against so the per-card "Open in Inspector" URLs are
+        # copy-pasteable verbatim. We trust the Origin header here
+        # because we already required it to be allowlisted.
+        base_url = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        return HTMLResponse(_render_index(registry, base_url=base_url))
 
     @router.post("/scenario/{experiment_id}")
     async def run_scenario(experiment_id: str, request: Request) -> Response:
