@@ -1,0 +1,26 @@
+id: remote-promptware-heartbeat
+title: Promptware / Agent Commander heartbeat demo
+phase: expansion-2025-2026
+owasp:
+  - MCP06
+  - MCP08
+agent_traps:
+  - Behavioural Control
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/agent-commander/checkins.jsonl
+    - sandbox/effects/heartbeat-demo-<session>.txt
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://embracethered.com/blog/posts/2026/agent-commander-your-agent-works-for-me-now/

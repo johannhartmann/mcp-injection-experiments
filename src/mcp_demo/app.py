@@ -65,6 +65,14 @@ from mcp_demo.experiments.cross_agent_config_priv_esc import (
     build_default_runtime as build_cross_agent_runtime,
     run_scenario as run_cross_agent_scenario,
 )
+from mcp_demo.experiments.promptware_heartbeat import (
+    build_default_runtime as build_promptware_runtime,
+    run_scenario as run_promptware_scenario,
+)
+from mcp_demo.experiments.ai_clickfix import (
+    build_default_runtime as build_clickfix_runtime,
+    run_scenario as run_clickfix_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -216,6 +224,26 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-cross-agent-config-priv-esc"] = (
             lambda mode, sid, _rt=rt: run_cross_agent_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-promptware-heartbeat" in registry:
+        rt = build_promptware_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-promptware-heartbeat"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-promptware-heartbeat"] = (
+            lambda mode, sid, _rt=rt: run_promptware_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-ai-clickfix" in registry:
+        rt = build_clickfix_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-ai-clickfix"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-ai-clickfix"] = (
+            lambda mode, sid, _rt=rt: run_clickfix_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
