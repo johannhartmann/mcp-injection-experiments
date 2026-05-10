@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+.env
+.env.local
+
+# uv
+# uv.lock IS committed for reproducibility
+
+# Demo artefacts (regenerated at runtime)
+var/
+sandbox/effects/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local Claude config (do not commit)
+CLAUDE.md
+.claude/
+
+# Source artefacts
+SHA256SUMS.txt
+mcp-http-streaming-demo-prompt-pack/
+mcp-http-streaming-demo-prompt-pack-v2*.zip

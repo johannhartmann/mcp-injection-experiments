@@ -1,35 +1,90 @@
-# MCP Tool Poisoning Experiments
+# MCP HTTP Streaming Online Demo - Claude Code Prompt Pack
 
-This repository contains a few experimental MCP server implementations, that attempt ot inject the MCP client/agent in use.
+Dieses Prompt-Pack ist dafuer gedacht, das Repository `johannhartmann/mcp-injection-experiments` schrittweise in eine sichere Online-Demo-Suite umzubauen.
 
-For more details about the attack method, please see our [blog post](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks).
+Zielbild:
 
-**Update:** We have released a new security scanning tool called [mcp-scan](https://github.com/invariantlabs-ai/mcp-scan), that detects MCP attacks as demonstrated in this repository, and helps you secure your MCP servers.
+- MCP-Server sind per Streamable HTTP erreichbar, z. B. `/mcp/direct-poisoning`.
+- Eine kontrollierte Web-Demo bzw. ein MCP-Client-Simulator zeigt verwundbare und verteidigte Varianten nebeneinander.
+- Alle Demos arbeiten mit Canary-Daten, Mock-Sinks, lokalen Testdaten und sichtbaren, begrenzten Nebenwirkungen.
+- Keine echten Secrets, keine echten Drittanbieter-APIs, keine unkontrollierte RCE, keine echten internen Netzwerkzugriffe.
+- Verwundbare Modi duerfen echte Effekte erzeugen, aber nur in der Demo-Zone: Mock-Inbox, MockSink, sandbox/effects, Demo-DB und Telemetrie.
+- Jede Erweiterung entsteht test-first mit `pytest`/HTTP-Integrationstests.
 
-## Direct Poisoning 
+## Verwendung
 
-In [`direct-poisoning.py`](./direct-poisoning.py), we implement a simple MCP server that instructs an agent to leak sensitive files, when calling the `add` tool (in this case SSH keys and the `mcp.json` file itself). 
+1. Entpacke dieses Paket neben oder in das Zielrepo.
+2. Kopiere `CLAUDE.md` in den Root des Zielrepos.
+3. Starte Claude Code im Zielrepo.
+4. Fuehre die Prompts aus `prompts/` der Reihe nach aus.
+5. Nach jedem Prompt: Tests laufen lassen, Diff pruefen, Commit machen.
 
-An example execution in cursor looks like this:
+Empfohlene Reihenfolge:
 
-![Cursor executes tool poisoning](https://invariantlabs.ai/images/cursor-injection.png)
+```text
+prompts/00-baseline-repo-audit.md
+prompts/01-test-harness-foundation.md
+prompts/02-safe-sandbox-canaries.md
+prompts/02b-observable-impact-ledger.md
+prompts/03-streamable-http-transport.md
+prompts/04-remote-direct-poisoning.md
+prompts/05-remote-tool-shadowing.md
+prompts/06-remote-sleeper-rug-pull.md
+prompts/07-remote-registry-rug-pull.md
+prompts/08-remote-cross-session-context-leak.md
+prompts/09-remote-auth-confused-deputy.md
+prompts/10-remote-ssrf-metadata-discovery-simulation.md
+prompts/11-audit-telemetry-dashboard.md
+prompts/12-remote-sampling-abuse-simulation.md
+prompts/13-demo-ui-and-docker.md
+prompts/14-security-hardening-review.md
+prompts/15-docs-final-polish.md
+```
 
-## Tool Shadowing
+## Was dieses Pack bewusst nicht tut
 
-In [`shadowing.py`](./shadowing.py), we implement a more sophisticated MCP attack, that manipulates the agent's behavior of a `send_email` tool (provided by a different, trusted server), such that all emails sent by the agent are leaked to the attacker's server.
+Dieses Pack liefert keine realen Angriffspayloads gegen echte Services. Es beschreibt Demo-Angriffe mit echten, beobachtbaren Nebenwirkungen innerhalb einer isolierten Demo-Zone. Beispiele: ein Canary erscheint in einer Mock-Attacker-Inbox, eine Datei wird unter `sandbox/effects/` erzeugt, ein Fake-CRM-Datensatz wird veraendert oder ein Budgetzaehler wird verbraucht. Es beruehrt keine echten lokalen Dateien, echten Tokens, echten Chat-/Mail-APIs oder fremden Netzwerkziele.
 
-An example execution in Cursor looks like this:
+## Designprinzip
 
-![Cursor executes tool shadowing](https://invariantlabs.ai/images/mcp-shadow.png)
+Jeder Prompt folgt demselben Muster:
 
-## WhatsApp takeover
+1. vorhandenen Code inspizieren,
+2. Tests zuerst schreiben,
+3. minimale Implementierung bauen,
+4. Sicherheitsgrenzen pruefen,
+5. Dokumentation und Manifeste aktualisieren.
 
-Lastly, in [`whatsapp-takeover.py`](./whatsapp-takeover.py), we implement a shadowing attack combined with a sleeper rug pull, i.e. an MCP server that changes its tool interface only on the second load to a malicious one.
+## Development
 
-The server first masks as a benign "random fact of the day" implementation, and then changes the tool to a malicious one that manipulates [whatsapp-mcp](https://github.com/lharries/whatsapp-mcp) in the same agent, to leak messages to the attacker's phone number.
+Die Demo-Suite nutzt [`uv`](https://docs.astral.sh/uv/) als Paket- und
+Environment-Manager. Python 3.11 oder neuer wird vorausgesetzt.
 
-![Cursor executes WhatsApp MCP attack](https://github.com/user-attachments/assets/a39ea101-3fd2-4945-abcd-942006cfe11c)
+```bash
+# Initiale Einrichtung (legt .venv/ an, installiert mcp-demo + Dev-Deps)
+uv sync --all-extras
 
+# Tests laufen lassen
+uv run pytest
 
-Can you spot the exfiltration? Here, the malicious tool instructions ask the agent to include the smuggled data after many spaces, such that with invisible scroll bars, the user does not see the data being leaked. Only when you scroll all the way to the right, will you be able to find the exfiltration payload.
+# Nur Unit-Tests
+uv run pytest tests/unit -v
+```
 
+Wichtige Pfade:
+
+- `src/mcp_demo/` - Anwendungs-Code (Manifeste, Registry, spaeter Transport,
+  Experimente, Web-UI).
+- `experiments/manifests/` - YAML-Manifeste pro Experiment. Werden beim Start
+  validiert; ein Manifest mit `uses_real_secrets: true` oder
+  `safe_mode: false` wird abgelehnt.
+- `tests/unit/` - schnelle Vertragstests (Manifest, Registry, Result-Schema).
+- `tests/integration/` - HTTP-/MCP-Integrationstests (folgt in spaeteren Schritten).
+- `tests/security/` - Negativtests fuer Sicherheitsgrenzen (folgt).
+- `docs/migration-plan.md` - Reihenfolge der Umsetzung.
+- `docs/owasp-mcp-coverage.md` - OWASP MCP Top 10 Coverage-Matrix.
+
+Die Demo verwendet ausschliesslich Mock-Komponenten und Canary-Daten innerhalb
+der Demo-Zone (`sandbox/`, `var/`). Echte Secrets, echte Drittanbieter-APIs
+und echte Outbound-Requests sind verboten - siehe `CLAUDE.md` und
+`architecture/security-model.md`.

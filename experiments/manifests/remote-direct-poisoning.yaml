@@ -1,0 +1,31 @@
+id: remote-direct-poisoning
+title: Remote Direct Poisoning
+owasp:
+  - MCP01
+  - MCP03
+  - MCP06
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/direct-poisoning
+expected_vulnerable_result: mock_sink_receives_canary
+expected_defended_result: policy_blocks_canary_exfiltration
+mitigations:
+  - tool_description_linter
+  - canary_exfiltration_policy
+  - context_taint_tracking
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+  - https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
+impact:
+  vulnerable:
+    type: mock_exfiltration
+    artifact: var/mock-inbox.jsonl
+    user_visible: canary_appeared_in_attacker_inbox
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: canary_exfiltration_blocked
