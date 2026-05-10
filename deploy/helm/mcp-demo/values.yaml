@@ -19,7 +19,10 @@ ingress:
   host: mcp-sec.data.mayflower.tech
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # data-muc cluster uses DNS-01 via the "letsencrypt-intern-dns"
+    # ClusterIssuer (same one argocd.data.mayflower.zone uses). HTTP-01
+    # 'letsencrypt' / 'letsencrypt-prod' issuers are not configured.
+    cert-manager.io/cluster-issuer: letsencrypt-intern-dns
   tls:
     enabled: true
     secretName: mcp-demo-tls
