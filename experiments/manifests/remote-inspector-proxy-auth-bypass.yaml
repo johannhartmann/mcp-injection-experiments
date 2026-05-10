@@ -1,0 +1,23 @@
+id: remote-inspector-proxy-auth-bypass
+title: MCP Inspector / devtool auth-bypass bounded RCE proof
+phase: expansion-2025-2026
+owasp:
+  - MCP01
+  - MCP07
+mcp_surfaces:
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - sandbox/effects/inspector-rce-proof-<session>.txt
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://github.com/advisories/GHSA-7f8r-222p-6f5g
+  - https://www.oligo.security/blog/critical-rce-vulnerability-in-anthropic-mcp-inspector-cve-2025-49596

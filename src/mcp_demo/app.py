@@ -49,6 +49,10 @@ from mcp_demo.experiments.filesystem_sandbox_escape import (
     build_default_runtime as build_fs_escape_runtime,
     run_scenario as run_fs_escape_scenario,
 )
+from mcp_demo.experiments.inspector_proxy_auth_bypass import (
+    build_default_runtime as build_inspector_runtime,
+    run_scenario as run_inspector_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -210,6 +214,16 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-filesystem-sandbox-escape"] = (
             lambda mode, sid, _rt=rt: run_fs_escape_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-inspector-proxy-auth-bypass" in registry:
+        rt = build_inspector_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-inspector-proxy-auth-bypass"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-inspector-proxy-auth-bypass"] = (
+            lambda mode, sid, _rt=rt: run_inspector_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
