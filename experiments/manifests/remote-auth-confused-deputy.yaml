@@ -1,0 +1,30 @@
+id: remote-auth-confused-deputy
+title: Remote Auth Confused Deputy (Fake-OAuth)
+owasp:
+  - MCP01
+  - MCP07
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/auth-confused-deputy
+expected_vulnerable_result: fake_crm_change_applied_with_wrong_audience_token
+expected_defended_result: token_rejected_with_failed_check_explanation
+mitigations:
+  - audience_validation
+  - expiry_validation
+  - scope_subset_check
+  - per_client_redirect_consent
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+impact:
+  vulnerable:
+    type: permission_change_applied
+    artifact: var/telemetry.jsonl
+    user_visible: fake_crm_record_changed_with_wrong_audience_token
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: token_passthrough_blocked_with_failed_check
