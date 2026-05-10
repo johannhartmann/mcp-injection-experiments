@@ -89,6 +89,80 @@ der Demo-Zone (`sandbox/`, `var/`). Echte Secrets, echte Drittanbieter-APIs
 und echte Outbound-Requests sind verboten - siehe `CLAUDE.md` und
 `architecture/security-model.md`.
 
+## Streamable HTTP demo transport
+
+Die Demo-Suite implementiert eine kleine, gut isolierte JSON-RPC-/Streamable-
+HTTP-Fassade unter `src/mcp_demo/transport/`. Das offizielle MCP Python SDK
+wird bewusst nicht eingebunden, weil die Demo pro Methode (`initialize`,
+`tools/list`, `tools/call`) gezielt zwischen verwundbarem und verteidigtem
+Verhalten umschalten und Tool-Beschreibungen sichtbar manipulieren muss.
+Wenn ein Wechsel auf das SDK sinnvoll wird, ist die Schnittstelle in
+`transport/jsonrpc.py` und `transport/streamable_http.py` der einzige Punkt,
+der angepasst werden muss.
+
+Lokal starten:
+
+```bash
+uv run uvicorn mcp_demo.app:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+`/healthz` antwortet ohne `Origin`-Pruefung. Alle `/mcp/*`-Endpunkte
+verlangen einen allowlisteten `Origin` und nach `initialize` einen
+gueltigen `Mcp-Session-Id`-Header.
+
+### Beispiel-cURL
+
+```bash
+# initialize -> liefert Mcp-Session-Id im Response-Header
+curl -i -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
+  -H 'Origin: http://127.0.0.1:8000' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":"init-1",
+    "method":"initialize",
+    "params":{
+      "protocolVersion":"2025-03-26",
+      "capabilities":{},
+      "clientInfo":{"name":"demo-client","version":"0.1.0"}
+    }
+  }'
+```
+
+```bash
+# tools/list -> erwartet die Mcp-Session-Id aus initialize
+curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
+  -H 'Origin: http://127.0.0.1:8000' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc":"2.0","id":"tools-1","method":"tools/list"}'
+```
+
+```bash
+# tools/call calculator.add
+curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
+  -H 'Origin: http://127.0.0.1:8000' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc":"2.0","id":"call-1",
+    "method":"tools/call",
+    "params":{"name":"calculator.add","arguments":{"a":2,"b":3}}
+  }'
+```
+
+Defaults aus `src/mcp_demo/config.py`:
+
+- `bind_host=127.0.0.1`, `bind_port=8000`.
+- `allowed_origins` enthaelt nur `http://127.0.0.1:8000`,
+  `http://localhost:8000` und `http://testserver` (ASGI-Tests).
+- `egress_mode=deny`.
+
+Ueberschreibbar via `DEMO_BIND_HOST`, `DEMO_BIND_PORT`,
+`DEMO_ALLOWED_ORIGINS` (komma-separiert), `DEMO_EGRESS_MODE`.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
