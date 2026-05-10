@@ -1,0 +1,26 @@
+id: remote-implicit-tool-poisoning
+title: Implicit tool poisoning via tools/list metadata
+phase: expansion-2025-2026
+owasp:
+  - MCP03
+  - MCP09
+agent_traps:
+  - Behavioural Control
+mcp_surfaces:
+  - tools/list
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/mock-inbox.jsonl
+    - var/tool-planning-trace.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://arxiv.org/abs/2601.07395

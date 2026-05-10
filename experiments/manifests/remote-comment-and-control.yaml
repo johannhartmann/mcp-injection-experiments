@@ -1,0 +1,25 @@
+id: remote-comment-and-control
+title: GitHub Comment-and-Control prompt injection
+phase: expansion-2025-2026
+owasp:
+  - MCP03
+  - MCP10
+agent_traps:
+  - Behavioural Control
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/mock-github/pr-comments.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://oddguan.com/blog/comment-and-control-prompt-injection-credential-theft-claude-code-gemini-cli-github-copilot/

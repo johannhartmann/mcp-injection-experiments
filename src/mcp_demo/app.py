@@ -73,6 +73,14 @@ from mcp_demo.experiments.ai_clickfix import (
     build_default_runtime as build_clickfix_runtime,
     run_scenario as run_clickfix_scenario,
 )
+from mcp_demo.experiments.implicit_tool_poisoning import (
+    build_default_runtime as build_implicit_tp_runtime,
+    run_scenario as run_implicit_tp_scenario,
+)
+from mcp_demo.experiments.comment_and_control import (
+    build_default_runtime as build_cnc_runtime,
+    run_scenario as run_cnc_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -244,6 +252,26 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-ai-clickfix"] = (
             lambda mode, sid, _rt=rt: run_clickfix_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-implicit-tool-poisoning" in registry:
+        rt = build_implicit_tp_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-implicit-tool-poisoning"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-implicit-tool-poisoning"] = (
+            lambda mode, sid, _rt=rt: run_implicit_tp_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-comment-and-control" in registry:
+        rt = build_cnc_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-comment-and-control"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-comment-and-control"] = (
+            lambda mode, sid, _rt=rt: run_cnc_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
