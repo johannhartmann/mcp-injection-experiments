@@ -1,0 +1,27 @@
+id: remote-slack-unfurl-leak
+title: Slack MCP link-unfurling data leak demo
+phase: expansion-2025-2026
+owasp:
+  - MCP03
+  - MCP10
+agent_traps:
+  - Behavioural Control
+  - Human-in-the-Loop
+mcp_surfaces:
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/mock-slack/messages.jsonl
+    - var/mock-unfurler/requests.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://embracethered.com/blog/posts/2025/security-advisory-anthropic-slack-mcp-server-data-leakage/
+  - https://github.com/advisories/GHSA-gmx5-crwh-6vxg
