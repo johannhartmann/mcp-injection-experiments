@@ -1,13 +1,13 @@
 services:
   mcp-demo:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: mcp-demo:dev
+    # Pull the prebuilt image from GitHub Container Registry instead of
+    # building locally. Override the tag via ``MCP_DEMO_IMAGE_TAG``
+    # (default: latest, set by .github/workflows/ci.yml on push to main).
+    # Example:
+    #   MCP_DEMO_IMAGE_TAG=v1.2.0 docker compose -f docker-compose.ghcr.yml up -d
+    image: ghcr.io/johannhartmann/mcp-injection-experiments:${MCP_DEMO_IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: mcp-demo
-    # Local-development binding only. When putting this behind a public
-    # reverse proxy, do not publish the port to 0.0.0.0 directly; serve via
-    # the proxy and set DEMO_PUBLIC_MODE=true with hardened settings.
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -18,11 +18,6 @@ services:
       DEMO_EGRESS_MODE: "deny"
       DEMO_ENABLE_LOCAL_CALC_PROOF: "false"
     read_only: true
-    # Ephemeral demo artefacts: telemetry JSONL, mock-inbox, sandbox
-    # file proofs. The image pre-sets both directories to mode 1777 so
-    # that the tmpfs mount (which Docker creates root-owned with the
-    # underlying directory's mode) is writable by the unprivileged
-    # ``mcp`` user.
     tmpfs:
       - /app/var
       - /app/sandbox/effects

@@ -53,13 +53,37 @@ Anschliessend:
 
 ### Docker
 
+Lokal bauen:
+
 ```bash
-docker compose up --build
+docker compose up --build -d
+# Stoppen + Container loeschen + tmpfs wegwerfen:
+docker compose down
 ```
 
-Container laeuft als unprivilegierter User, Filesystem read-only,
-`tmpfs` fuer `var/` und `sandbox/effects/`, `cap_drop: ALL`. Details und
-Public-Mode-Konfiguration in [`docs/deployment.md`](docs/deployment.md).
+Oder das von der CI gebaute Image aus GHCR ziehen, ohne selbst zu
+bauen:
+
+```bash
+docker compose -f docker-compose.ghcr.yml up -d
+# Spezifischer Tag (default: latest):
+MCP_DEMO_IMAGE_TAG=main docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Beide Compose-Profile:
+
+- binden Port nur an `127.0.0.1:8000`,
+- laufen als unprivilegierter User `mcp` (uid 10001),
+- mounten Filesystem `read_only`, mit `tmpfs` ueber `/app/var`,
+  `/app/sandbox/effects`, `/app/sandbox/allowed`, `/app/sandbox/outside`,
+- droppen alle Capabilities (`cap_drop: ALL`,
+  `no-new-privileges:true`),
+- liefern einen `healthz`-basierten Healthcheck.
+
+`docker-compose.yml` baut aus dem lokalen Tree und taggt das Ergebnis
+als `mcp-demo:dev`. `docker-compose.ghcr.yml` zieht
+`ghcr.io/johannhartmann/mcp-injection-experiments:<tag>`. Public-Mode-
+Konfiguration in [`docs/deployment.md`](docs/deployment.md).
 
 ## Experimente und OWASP-Mapping
 

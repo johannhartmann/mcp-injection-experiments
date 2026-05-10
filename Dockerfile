@@ -21,7 +21,22 @@ RUN python -m pip install --upgrade pip && \
 COPY experiments ./experiments
 COPY sandbox ./sandbox
 COPY tests/fixtures ./tests/fixtures
-RUN mkdir -p /app/var && chown -R mcp:mcp /app
+# Both /app/var and /app/sandbox/effects are written to at runtime
+# (telemetry JSONL, mock-inbox, sandbox-file demo artefacts). When run
+# read-only with these directories overlaid as tmpfs, Docker preserves
+# the underlying inode's mode but resets the tmpfs root's owner to
+# root - so we set 1777 here (sticky world-writable, same as /tmp) so
+# the unprivileged ``mcp`` user can write into them. ``cap_drop: ALL``
+# and the non-root user keep this from being a meaningful exposure.
+RUN mkdir -p /app/var \
+        /app/sandbox/effects \
+        /app/sandbox/allowed \
+        /app/sandbox/outside && \
+    chown -R mcp:mcp /app && \
+    chmod 1777 /app/var \
+        /app/sandbox/effects \
+        /app/sandbox/allowed \
+        /app/sandbox/outside
 
 USER mcp
 
