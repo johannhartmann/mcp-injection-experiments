@@ -412,6 +412,42 @@ Secrets, keine echten Redirects. Der Issuer hat die URL
 `https://issuer.demo.invalid`; jeder Token traegt das `FAKEJWT`-Prefix
 und die `fake`-Signatur.
 
+## Remote SSRF Metadata Discovery (Mock-Resolver)
+
+`remote-ssrf-metadata` zeigt einen klassischen SSRF-Pfad gegen ein
+Cloud-Metadata-Endpunkt - **ohne** echten Netzwerkverkehr. Eine Tool-
+Aufforderung referenziert `https://metadata.attacker.example/latest/
+meta-data/`. Der Operator hat den Host allowlistet, aber der `MockResolver`
+mappt ihn auf `169.254.169.254`. Die Demo zeigt:
+
+- vulnerable: das Experiment schreibt
+  `sandbox/effects/ssrf-metadata-<session>.json` mit URL, aufgeloester
+  IP und `would_have_fetched: true`. Ein
+  `sandbox_file_written`-Event landet im Telemetry-Log. Es wird **kein
+  echter Request** gestellt; Tests asserten via Monkeypatch von
+  `socket.getaddrinfo` und `urllib.request.urlopen`, dass nichts
+  hinausgeht.
+- defended: `classify_url` prueft Scheme (HTTPS in Production-Mode),
+  Hostname-Allowlist, IP-Klassifikation (Loopback, Link-local, private,
+  multicast, reserved, unspecified, plus Literal-Block fuer
+  `169.254.169.254`) und Redirect-Target. Bei einem Refusal feuert
+  `url_safety_policy`; `record_blocked_attempt` schreibt einen
+  `blocked_attempt_recorded`-Event mit der vollstaendigen Begruendung.
+  `DemoResult.events[0]` traegt `url`, `resolved_ips`,
+  `classification: blocked` und `reason`.
+
+Zusatzfeatures:
+
+- `pinned_ips` Parameter in `classify_url` simuliert DNS-Pinning fuer
+  TOCTOU: ein Attacker, der DNS nach dem ersten Lookup auf eine private
+  IP umstellt, kann den festgepinnt IP-Set nicht ueberschreiben.
+- Redirect-Target-Check: wenn ein 30x in einen ungueltigen Host
+  umleitet, blockt der Classifier auch den ursprunglichen Request.
+
+Sicherheitsgrenzen: keine echte DNS-Aufloesung, keine echten Sockets,
+keine Outbound-HTTP-Requests. Der `MockResolver` ist die einzige
+Wahrheitsquelle fuer Hostname -> IP.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
