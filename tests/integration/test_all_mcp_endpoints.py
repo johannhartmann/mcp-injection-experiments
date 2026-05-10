@@ -21,6 +21,9 @@ _MOUNTED = [
     ("remote-tool-shadowing", "tool-shadowing"),
     ("remote-sleeper-rug-pull", "sleeper-rug-pull"),
     ("remote-implicit-tool-poisoning", "implicit-tool-poisoning"),
+    ("remote-cross-session-context-leak", "cross-session-context-leak"),
+    ("remote-cross-agent-config-priv-esc", "cross-agent-config-priv-esc"),
+    ("remote-sampling-abuse", "sampling-abuse"),
 ]
 
 

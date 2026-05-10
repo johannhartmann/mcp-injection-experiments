@@ -32,6 +32,7 @@ from mcp_demo.experiments.auth_confused_deputy import (
 )
 from mcp_demo.experiments.cross_session_leak import (
     build_default_runtime as build_cross_session_runtime,
+    build_mcp_servers as build_cross_session_mcp_servers,
     run_scenario as run_cross_session_scenario,
 )
 from mcp_demo.experiments.direct_poisoning import (
@@ -65,6 +66,7 @@ from mcp_demo.experiments.trustfall_project_mcp_settings import (
 )
 from mcp_demo.experiments.cross_agent_config_priv_esc import (
     build_default_runtime as build_cross_agent_runtime,
+    build_mcp_servers as build_cross_agent_mcp_servers,
     run_scenario as run_cross_agent_scenario,
 )
 from mcp_demo.experiments.promptware_heartbeat import (
@@ -120,6 +122,7 @@ from mcp_demo.experiments.sleeper_rug_pull import (
 )
 from mcp_demo.experiments.sampling_abuse import (
     build_default_runtime as build_sampling_abuse_runtime,
+    build_mcp_servers as build_sampling_abuse_mcp_servers,
     run_scenario as run_sampling_abuse_scenario,
 )
 from mcp_demo.experiments.ssrf_metadata import (
@@ -285,6 +288,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-cross-session-context-leak",
+            build_cross_session_mcp_servers,
+            rt,
+        )
 
     if "remote-cross-agent-config-priv-esc" in registry:
         rt = build_cross_agent_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -294,6 +302,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_cross_agent_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-cross-agent-config-priv-esc",
+            build_cross_agent_mcp_servers,
+            rt,
         )
 
     if "remote-promptware-heartbeat" in registry:
@@ -467,6 +480,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_sampling_abuse_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-sampling-abuse",
+            build_sampling_abuse_mcp_servers,
+            rt,
         )
 
     if "remote-ssrf-metadata" in registry:

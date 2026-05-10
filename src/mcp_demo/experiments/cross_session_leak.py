@@ -264,3 +264,58 @@ def run_scenario(
         observer_user="bob",
         observer_session=session_id,
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: CrossSessionLeakRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers; each exposes ``run_demo`` (canonical scenario)
+    and ``read_my_canary`` (per-user canary echo). The vulnerable variant
+    keys the canary store by session id alone (the bug); the defended
+    variant requires user_id + session_id."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        instructions = (
+            "cross-session-context-leak vulnerable demo. State is keyed by "
+            "session_id alone, so a second client guessing the same id can "
+            "observe the first canary."
+            if mode == "vulnerable"
+            else "cross-session-context-leak defended demo. State is keyed "
+            "by (user_id, session_id); cross-user lookups are refused."
+        )
+        server = make_fastmcp(
+            name=f"{server_name}.cross-session.{mode}",
+            instructions=instructions,
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="run_demo",
+            description=(
+                "Drive the canonical cross-session-context-leak scenario "
+                "for this mode and return the DemoResult JSON."
+            ),
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

@@ -200,3 +200,86 @@ def run_scenario(
                 }
             ],
         )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: CrossAgentConfigRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes a ``write_agent_config`` tool
+    plus ``run_demo``. The vulnerable variant accepts cross-agent writes
+    (Agent A modifying Agent B); the defended variant refuses with the
+    agent_config_owner_write_policy."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.cross-agent.{mode}",
+            instructions=(
+                "cross-agent vulnerable demo: any agent may overwrite any "
+                "other agent's rules."
+                if mode == "vulnerable"
+                else "cross-agent defended demo: only the owning agent may "
+                "write its own rules."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="write_agent_config",
+            description=(
+                "Write a JSON config for the named agent. Vulnerable mode "
+                "skips the owner check. Argument 'writer' identifies the "
+                "agent issuing the write."
+            ),
+        )
+        def write_agent_config(
+            target_agent: str, writer: str, allow: list[str]
+        ) -> dict:  # noqa: D401
+            from mcp_demo.experiments.cross_agent_config_priv_esc import (
+                _write_b_rules_defended,
+                _write_b_rules_unsafe,
+            )
+
+            new_rules = {"owner": target_agent, "allow": list(allow)}
+            if mode == "vulnerable":
+                _write_b_rules_unsafe(
+                    runtime, writer=writer, new_rules=new_rules
+                )
+                return {"written": True, "owner_check": "skipped"}
+            try:
+                _write_b_rules_defended(
+                    runtime, writer=writer, new_rules=new_rules
+                )
+            except PermissionError as err:
+                raise ValueError(str(err))
+            return {"written": True, "owner_check": "passed"}
+
+        @server.tool(
+            name="run_demo",
+            description=(
+                "Drive the canonical cross-agent priv-esc scenario for "
+                "this mode and return the DemoResult JSON."
+            ),
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

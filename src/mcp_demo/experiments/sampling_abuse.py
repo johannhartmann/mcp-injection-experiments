@@ -186,3 +186,93 @@ def _refused(session_id: str, reason: str) -> DemoResult:
             }
         ],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: SamplingAbuseRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes ``summarise`` (a fake-LLM tool
+    that consumes per-session sampling budget) plus ``run_demo``. The
+    vulnerable summarise body skips request/response policy checks; the
+    defended body runs SamplingPolicy and refuses on the same patterns
+    the scenario tests."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.sampling-abuse.{mode}",
+            instructions=(
+                "sampling-abuse vulnerable demo: each summarise call burns "
+                "real sampling budget without policy checks."
+                if mode == "vulnerable"
+                else "sampling-abuse defended demo: summarise enforces the "
+                "sampling-policy on request and response before consuming "
+                "budget."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="summarise",
+            description=(
+                "Summarise the prompt with the FakeLLM. Consumes one unit "
+                "of the per-session sampling budget."
+            ),
+        )
+        def summarise(prompt: str, session_id: str = f"mcp-{mode}") -> str:  # noqa: D401
+            from mcp_demo.shared.sampling_policy import (
+                SamplingPolicy,
+                SamplingRequest,
+                SamplingResponse,
+            )
+
+            if mode == "defended":
+                policy = SamplingPolicy()
+                request_decision = policy.evaluate_request(
+                    SamplingRequest(session_id=session_id, prompt=prompt)
+                )
+                if not request_decision.allowed:
+                    raise ValueError(
+                        f"refused: {request_decision.reason}"
+                    )
+            runtime.budget.consume(session_id=session_id, cost=1)
+            response_text = runtime.llm.complete(prompt, attack=False)
+            if mode == "defended":
+                response_decision = SamplingPolicy().evaluate_response(
+                    SamplingResponse(session_id=session_id, text=response_text)
+                )
+                if not response_decision.allowed:
+                    raise ValueError(
+                        f"refused: {response_decision.reason}"
+                    )
+            return response_text
+
+        @server.tool(
+            name="run_demo",
+            description=(
+                "Drive the canonical sampling-abuse scenario for this "
+                "mode and return the DemoResult JSON."
+            ),
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }
