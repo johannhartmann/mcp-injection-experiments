@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-demo.fullname" . }}
+  labels:
+    {{- include "mcp-demo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "mcp-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mcp-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DEMO_BIND_HOST
+              value: "0.0.0.0"
+            - name: DEMO_BIND_PORT
+              value: "8000"
+            - name: DEMO_PUBLIC_MODE
+              value: {{ .Values.config.publicMode | quote }}
+            - name: DEMO_ALLOWED_ORIGINS
+              value: {{ .Values.config.allowedOrigins | quote }}
+            - name: DEMO_EGRESS_MODE
+              value: "deny"
+            - name: DEMO_ENABLE_LOCAL_CALC_PROOF
+              value: "false"
+            - name: DEMO_REPO_ROOT
+              value: "/app"
+            - name: DEMO_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mcp-demo.fullname" . }}-admin
+                  key: admin-token
+          # The container needs four writable paths at runtime: telemetry
+          # JSONL, mock-inbox, sandbox file proofs, and the
+          # filesystem-escape demo's allowed/outside dirs. emptyDir{}
+          # backs each so the read-only root filesystem stays read-only.
+          volumeMounts:
+            - name: var
+              mountPath: /app/var
+            - name: sandbox-effects
+              mountPath: /app/sandbox/effects
+            - name: sandbox-allowed
+              mountPath: /app/sandbox/allowed
+            - name: sandbox-outside
+              mountPath: /app/sandbox/outside
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: var
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        - name: sandbox-effects
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        - name: sandbox-allowed
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Mi
+        - name: sandbox-outside
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

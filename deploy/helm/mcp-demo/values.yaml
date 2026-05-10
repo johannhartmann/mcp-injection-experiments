@@ -1,0 +1,86 @@
+# Default values for the mcp-demo Helm chart.
+# Real values for the data-muc cluster live in the matching ArgoCD
+# Application under data-muc/demo-apps/mcp-sec.yaml.
+
+image:
+  repository: ghcr.io/johannhartmann/mcp-injection-experiments
+  tag: main
+  pullPolicy: Always
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: traefik
+  host: mcp-sec.data.mayflower.tech
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: mcp-demo-tls
+
+# Demo runtime configuration. The container's safe defaults
+# (DEMO_BIND_HOST=0.0.0.0, DEMO_EGRESS_MODE=deny,
+# DEMO_ENABLE_LOCAL_CALC_PROOF=false, DEMO_REPO_ROOT=/app) come from
+# the image; we only override what differs in the cluster.
+config:
+  publicMode: true
+  allowedOrigins: "https://mcp-sec.data.mayflower.tech"
+
+# Admin-token gate for /admin/* (demo reset and related). Override via
+# the ArgoCD Application's helm.parameters or via --set on install.
+# Empty string means: the chart fails fast (publicMode requires a real
+# token).
+auth:
+  # Filled in by the data-muc Application file. NEVER leave the empty
+  # string in production: validate_for_public_mode() refuses to start.
+  adminToken: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Pod-level hardening; matches docker-compose.yml.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Probes hit /healthz and /readyz which the app exposes without
+# Origin-allowlist enforcement.
+probes:
+  liveness:
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+  startup:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

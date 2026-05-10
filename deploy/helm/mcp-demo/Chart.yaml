@@ -1,0 +1,12 @@
+apiVersion: v2
+name: mcp-demo
+description: Safe MCP injection experiment online demo (vulnerable/defended modes)
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+home: https://github.com/johannhartmann/mcp-injection-experiments
+sources:
+  - https://github.com/johannhartmann/mcp-injection-experiments
+maintainers:
+  - name: Johann-Peter Hartmann
+    email: johannhartmann@gmail.com
