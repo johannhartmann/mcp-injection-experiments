@@ -61,6 +61,10 @@ from mcp_demo.experiments.trustfall_project_mcp_settings import (
     build_default_runtime as build_trustfall_runtime,
     run_scenario as run_trustfall_scenario,
 )
+from mcp_demo.experiments.cross_agent_config_priv_esc import (
+    build_default_runtime as build_cross_agent_runtime,
+    run_scenario as run_cross_agent_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -202,6 +206,16 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-cross-session-context-leak"] = (
             lambda mode, sid, _rt=rt: run_cross_session_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-cross-agent-config-priv-esc" in registry:
+        rt = build_cross_agent_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-cross-agent-config-priv-esc"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-cross-agent-config-priv-esc"] = (
+            lambda mode, sid, _rt=rt: run_cross_agent_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )

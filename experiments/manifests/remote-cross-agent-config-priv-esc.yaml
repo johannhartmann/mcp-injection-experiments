@@ -1,0 +1,27 @@
+id: remote-cross-agent-config-priv-esc
+title: Cross-agent privilege escalation via shared configs
+phase: expansion-2025-2026
+owasp:
+  - MCP02
+  - MCP07
+agent_traps:
+  - Systemic
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/agents/agent-b-rules.json
+    - var/agents/agent-b-actions.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://embracethered.com/blog/posts/2025/cross-agent-privilege-escalation-agents-that-free-each-other/
+  - https://simonwillison.net/2025/Sep/24/cross-agent-privilege-escalation/
