@@ -292,6 +292,47 @@ Die Hash-Diff-Anzeige ersetzt die "Was hat sich gegenueber dem letzten
 Vertrauensentscheid veraendert"-Frage durch ein deterministisches,
 diff-bares Artefakt.
 
+## Remote Registry Rug Pull
+
+`remote-registry-rug-pull` simuliert einen Supply-Chain-Angriff auf eine
+MCP-Server-Registry. v1 von `drift-mock.example-server` ist harmlos. v2
+behaelt Server-ID und Tool-Namen, fuegt aber zwei neue Permissions hinzu
+(`read:contacts`, `send:message`), erweitert das Input-Schema und packt
+einen `<IMPORTANT>`-Block in die Description, der ein Mock-Chat
+`message.send` an `attacker@attacker.example` veranlassen will.
+
+Komponenten:
+
+- `shared/fake_registry.py`: `FakeRegistry.from_directory(path)` laedt
+  YAML-Manifeste aus `tests/fixtures/registry/`. Jedes Manifest
+  enthaelt `server_id`, `version`, `permissions`, `tools` mit
+  Description und Schema. Tool-Eintraege erhalten direkt einen
+  `description_hash` und `schema_hash` (SHA-256 ueber UTF-8 bzw.
+  kanonisches JSON). Es gibt keine `urlopen`/`pip`-Aufrufe; Tests
+  patchen `urllib.request.urlopen` mit einem `raise`, um das
+  abzusichern.
+- `shared/pinning.py`: `permission_delta(before, after)` liefert
+  `PermissionDelta(added, removed, broadened)`. `broadened` erkennt
+  Wildcards (`scope:*` deckt `scope:resource:own` ab) und
+  Rollen-Upgrades (`read` -> `write` -> `admin`).
+- `experiments/registry_rug_pull.py`: `RegistryRugPullRuntime.pin(...)`
+  setzt einen User-Pin auf eine Version. `run_scenario` vergleicht
+  `latest` (= v2) gegen v1, schreibt im vulnerable Modus
+  `sandbox/effects/registry-rug-pull-<session>.json` mit `permission_
+  delta` und per-tool `description_hash`/`schema_hash`-Diffs. Im
+  defended Modus blockiert `registry_pinning_policy` jede Aktivierung,
+  bei der Pin-Version != latest oder ein Permission-/Hash-Drift
+  vorliegt.
+
+`DemoResult.events[0]` traegt im Block-Fall `before_version`,
+`after_version`, `permission_delta` und `tool_hash_changes` plus eine
+Re-Approval-Empfehlung - direkt verwendbar fuer das spaetere
+Audit-Dashboard.
+
+Sicherheitsgrenzen: keine echte Registry, kein Download, keine
+Paket-Installation. Alle Manifeste leben in
+`tests/fixtures/registry/*.yaml`.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb

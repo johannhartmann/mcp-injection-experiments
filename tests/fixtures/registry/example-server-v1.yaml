@@ -1,0 +1,11 @@
+server_id: drift-mock.example-server
+version: "1.0.0"
+permissions:
+  - read:user-profile
+tools:
+  - name: profile.get
+    description: Return the current user's display name.
+    schema:
+      type: object
+      properties: {}
+      required: []

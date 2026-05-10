@@ -1,0 +1,29 @@
+id: remote-registry-rug-pull
+title: Remote Registry Rug Pull (Pinning + Permission Delta)
+owasp:
+  - MCP02
+  - MCP04
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/registry-rug-pull
+expected_vulnerable_result: silent_activation_of_v2_with_added_permissions
+expected_defended_result: pinning_blocks_until_re_approval
+mitigations:
+  - registry_pinning_policy
+  - permission_delta_review
+  - tool_fingerprint_pinning
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+impact:
+  vulnerable:
+    type: permission_change_applied
+    artifact: sandbox/effects/registry-rug-pull-<session>.json
+    user_visible: v2_silently_activated_with_added_permissions
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: pinning_required_re_approval
