@@ -219,16 +219,24 @@ der Demo-Zone (`sandbox/`, `var/`). Echte Secrets, echte Drittanbieter-APIs
 und echte Outbound-Requests sind verboten - siehe `CLAUDE.md` und
 `architecture/security-model.md`.
 
-## Streamable HTTP demo transport
+## Streamable HTTP MCP transport
 
-Die Demo-Suite implementiert eine kleine, gut isolierte JSON-RPC-/Streamable-
-HTTP-Fassade unter `src/mcp_demo/transport/`. Das offizielle MCP Python SDK
-wird bewusst nicht eingebunden, weil die Demo pro Methode (`initialize`,
-`tools/list`, `tools/call`) gezielt zwischen verwundbarem und verteidigtem
-Verhalten umschalten und Tool-Beschreibungen sichtbar manipulieren muss.
-Wenn ein Wechsel auf das SDK sinnvoll wird, ist die Schnittstelle in
-`transport/jsonrpc.py` und `transport/streamable_http.py` der einzige Punkt,
-der angepasst werden muss.
+Jedes Experiment ist als **echter Streamable-HTTP-MCP-Server** ueber das
+offizielle [`mcp` Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+erreichbar. Pro Experiment laufen zwei FastMCP-Instanzen — eine pro
+Modus — gemountet unter:
+
+```text
+/mcp/<experiment-slug>/vulnerable/
+/mcp/<experiment-slug>/defended/
+```
+
+Insgesamt **50 Mounts** (25 Experimente × 2 Modi). Jeder Mount spricht
+das volle Streamable-HTTP-Protokoll: `initialize`, `tools/list`,
+`tools/call`, SSE-Responses, `Mcp-Session-Id`-Lifecycle. Jede
+Instanz traegt `TransportSecuritySettings` mit der konfigurierten
+Origin-Allowlist und DNS-rebinding-Schutz, sodass die Sicherheits-
+checks vor jeder Tool-Body-Ausfuehrung greifen.
 
 Lokal starten:
 
@@ -236,15 +244,36 @@ Lokal starten:
 uv run uvicorn mcp_demo.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-`/healthz` antwortet ohne `Origin`-Pruefung. Alle `/mcp/*`-Endpunkte
-verlangen einen allowlisteten `Origin` und nach `initialize` einen
-gueltigen `Mcp-Session-Id`-Header.
+`GET /healthz` antwortet ohne `Origin`-Pruefung. Alle `/mcp/*`-Mounts
+verlangen einen allowlisteten `Origin` und (nach `initialize`) den
+ausgegebenen `Mcp-Session-Id`-Header. `GET /` liefert die HTML-Erklaerseite,
+`GET /demo` listet die Experiment-Karten, `GET /demo/events` zeigt das
+Telemetry-Log.
 
-### Beispiel-cURL
+### Mit dem offiziellen MCP-Client (Python)
+
+```python
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+
+async with streamable_http_client(
+    "http://127.0.0.1:8000/mcp/direct-poisoning/vulnerable/",
+) as (read, write, _):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+        tools = await session.list_tools()
+        print([t.name for t in tools.tools])
+        result = await session.call_tool(
+            "calculator.add",
+            arguments={"a": 2, "b": 3, "sidenote": "CANARY_..."},
+        )
+```
+
+### Mit cURL
 
 ```bash
 # initialize -> liefert Mcp-Session-Id im Response-Header
-curl -i -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
+curl -i -X POST http://127.0.0.1:8000/mcp/direct-poisoning/vulnerable/ \
   -H 'Origin: http://127.0.0.1:8000' \
   -H 'Accept: application/json, text/event-stream' \
   -H 'Content-Type: application/json' \
@@ -252,26 +281,22 @@ curl -i -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
     "jsonrpc":"2.0","id":"init-1",
     "method":"initialize",
     "params":{
-      "protocolVersion":"2025-03-26",
+      "protocolVersion":"2025-06-18",
       "capabilities":{},
       "clientInfo":{"name":"demo-client","version":"0.1.0"}
     }
   }'
-```
 
-```bash
 # tools/list -> erwartet die Mcp-Session-Id aus initialize
-curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
+curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning/vulnerable/ \
   -H 'Origin: http://127.0.0.1:8000' \
   -H 'Accept: application/json, text/event-stream' \
   -H 'Content-Type: application/json' \
   -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{"jsonrpc":"2.0","id":"tools-1","method":"tools/list"}'
-```
 
-```bash
-# tools/call calculator.add
-curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
+# tools/call run_demo (drives the canonical scenario)
+curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning/defended/ \
   -H 'Origin: http://127.0.0.1:8000' \
   -H 'Accept: application/json, text/event-stream' \
   -H 'Content-Type: application/json' \
@@ -279,9 +304,48 @@ curl -s -X POST http://127.0.0.1:8000/mcp/direct-poisoning \
   -d '{
     "jsonrpc":"2.0","id":"call-1",
     "method":"tools/call",
-    "params":{"name":"calculator.add","arguments":{"a":2,"b":3}}
+    "params":{"name":"run_demo","arguments":{"session_id":"demo-1"}}
   }'
 ```
+
+### MCP-Mount-Topologie
+
+Pro Experiment ist immer mindestens das `run_demo`-Tool registriert
+(es treibt das kanonische Szenario und liefert das vollstaendige
+`DemoResult`-JSON zurueck). Erfahrungsspezifische Tools/Resources
+sind narrativ relevant — vulnerable Variante traegt poisoned
+Description / unsichere Body-Logik, defended Variante traegt
+sanitised Description und enforce-t die zugehoerige Policy.
+
+| Experiment-Slug | MCP-Tools (zusaetzlich zu `run_demo`) | Defended-Policy |
+|---|---|---|
+| `direct-poisoning` | `calculator.add(a, b, sidenote)` | `canary_exfiltration_policy` |
+| `tool-shadowing` | `helper.add(a, b)` | `cross_server_instruction_policy` |
+| `sleeper-rug-pull` | `random_fact.get()` | `tool_metadata_drift_policy` |
+| `implicit-tool-poisoning` | `markdown_formatter.render(text)` *(vulnerable only)*, `mock_mail.send_email(to, subject, body)` | `tools_list_metadata_linter_policy` |
+| `cross-session-context-leak` | — | `session_isolation_policy` |
+| `cross-agent-config-priv-esc` | `write_agent_config(target_agent, writer, allow)` | `agent_config_owner_write_policy` |
+| `sampling-abuse` | `summarise(prompt, session_id)` | `sampling_policy` |
+| `auth-confused-deputy` | `update_profile(user_id, new_display_name, bearer)` | `audience_mismatch` / `consent_missing` / `expired` / `scope_insufficient` |
+| `inspector-proxy-auth-bypass` | `launch_server(session_id, admin_token, origin)` | `inspector_proxy_auth_policy` |
+| `mcp-remote-auth-endpoint-injection` | `connect_with_metadata(issuer, authorization_endpoint, token_endpoint)` | `oauth_metadata_validation_policy` |
+| `ssrf-metadata` | `fetch_metadata(url)` | `url_safety_policy` |
+| `filesystem-sandbox-escape` | `read_file(relative_path)` | `filesystem_resolved_path_policy` |
+| `git-filesystem-chain-safe` | `get_git_diff()`, `apply_diff_to_filesystem(diff_text, source)` | `untrusted_git_to_filesystem_policy` |
+| `github-issue-leak` | `read_public_issue`, `read_private_repo_file`, `post_pr_comment(repo, pr_number, body)` | `private_to_public_dataflow_policy` |
+| `slack-unfurl-leak` | `read_private_channel`, `post_message(channel, body)` | `private_canary_in_public_unfurl_url` |
+| `comment-and-control` | `read_pr_comment`, `post_pr_comment(repo, pr_number, body)` | `untrusted_text_to_public_sink_policy` |
+| `trustfall-project-mcp-settings` | *(only `run_demo(grant_per_server_consent)`)* | `per_server_consent_policy` |
+| `registry-rug-pull` | *(only `run_demo`; defended pins v1.0.0)* | `registry_pinning_policy` |
+| `promptware-heartbeat` | `read_project_note()` | `persistence_instruction_policy` |
+| `ai-clickfix` | `read_support_page()`, `run_repair(session_id, source)` | `untrusted_webpage_requested_system_action` |
+| `agent-traps-hidden-html` | `read_support_article()` | `human_agent_view_delta_policy` |
+| `agent-traps-memory-poisoning` | *(only `run_demo`)* | `untrusted_memory_for_tool_choice_policy` |
+| `agent-traps-subagent-spawning` | *(only `run_demo(spawn_source)`)* | `untrusted_resource_subagent_spawn_policy` |
+| `agent-traps-approval-fatigue` | *(only `run_demo`)* | `risk_differentiated_approval_policy` |
+| `agent-traps-sybil-and-fragments` | *(only `run_demo`)* | `sybil_and_fragment_composition_policy` |
+
+### Defaults und Override
 
 Defaults aus `src/mcp_demo/config.py`:
 
@@ -289,9 +353,11 @@ Defaults aus `src/mcp_demo/config.py`:
 - `allowed_origins` enthaelt nur `http://127.0.0.1:8000`,
   `http://localhost:8000` und `http://testserver` (ASGI-Tests).
 - `egress_mode=deny`.
+- `admin_token=local-dev` (override fuer Public Mode Pflicht).
 
 Ueberschreibbar via `DEMO_BIND_HOST`, `DEMO_BIND_PORT`,
-`DEMO_ALLOWED_ORIGINS` (komma-separiert), `DEMO_EGRESS_MODE`.
+`DEMO_ALLOWED_ORIGINS` (komma-separiert), `DEMO_EGRESS_MODE`,
+`DEMO_ADMIN_TOKEN`, `DEMO_PUBLIC_MODE=true|false`.
 
 ## Remote Direct Poisoning
 
