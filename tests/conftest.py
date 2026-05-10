@@ -24,3 +24,17 @@ async def client():
             base_url="http://testserver",
         ) as ac:
             yield ac
+
+
+@pytest.fixture
+async def app_and_client():
+    """Like ``client`` but also exposes the underlying FastAPI app so tests
+    that need to inject into ``app.state`` (e.g. SSE/ledger fan-out) can
+    do so without scraping internal httpx attributes."""
+    app = create_app()
+    async with LifespanManager(app):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as ac:
+            yield app, ac

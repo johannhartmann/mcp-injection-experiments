@@ -90,6 +90,10 @@ class ImpactLedger:
         self._jsonl_path = Path(jsonl_path) if jsonl_path is not None else None
         if self._jsonl_path is not None:
             self._jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        # Live subscribers (asyncio.Queue or any object with put_nowait).
+        # We keep them as a typed-loose list so the import surface stays
+        # in this module; the SSE route is the only registered consumer.
+        self._subscribers: list[object] = []
 
     def record(self, event: ImpactEvent) -> ImpactEvent:
         self._events.append(event)
@@ -97,7 +101,27 @@ class ImpactLedger:
             with self._jsonl_path.open("a", encoding="utf-8") as fh:
                 fh.write(event.model_dump_json())
                 fh.write("\n")
+        # Fan out to live subscribers. Best-effort: a slow/full subscriber
+        # must never block ledger.record() and must not crash other paths.
+        for sub in list(self._subscribers):
+            try:
+                sub.put_nowait(event)  # type: ignore[attr-defined]
+            except Exception:
+                # A subscriber whose queue is full or has been closed is
+                # silently skipped; the SSE consumer is responsible for
+                # unsubscribing on disconnect.
+                pass
         return event
+
+    def subscribe(self, queue: object) -> None:
+        """Register an asyncio.Queue-shaped object for live event fan-out."""
+        self._subscribers.append(queue)
+
+    def unsubscribe(self, queue: object) -> None:
+        try:
+            self._subscribers.remove(queue)
+        except ValueError:
+            pass
 
     def all_events(self) -> list[ImpactEvent]:
         return list(self._events)

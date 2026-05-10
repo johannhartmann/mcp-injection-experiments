@@ -156,6 +156,7 @@ from mcp_demo.shared.impact import ImpactLedger
 from mcp_demo.shared.results import DemoResult
 from mcp_demo.shared.telemetry import TelemetryView
 from mcp_demo.web.compare import build_compare_router
+from mcp_demo.web.events_stream import build_events_stream_router
 from mcp_demo.web.landing import render_landing_page
 from mcp_demo.web.routes import build_demo_router
 
@@ -613,6 +614,7 @@ def create_app(
     app.state.runtimes = runtimes
     app.state.scenario_runners = scenario_runners
     app.state.mcp_servers_by_experiment = mcp_servers_by_experiment
+    app.state.ledgers = ledgers
     app.state.telemetry = TelemetryView(ledgers)
 
     @app.get("/", include_in_schema=False)
@@ -648,5 +650,6 @@ def create_app(
         )
     )
     app.include_router(build_compare_router(registry=registry))
+    app.include_router(build_events_stream_router(ledgers=ledgers))
 
     return app
