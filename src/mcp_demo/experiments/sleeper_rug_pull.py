@@ -301,3 +301,68 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: SleeperRugPullRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers; the vulnerable variant publishes the
+    poisoned (load_index=1) random_fact.get description, the defended
+    variant publishes the benign (load_index=0) description."""
+
+    benign = list_tools(runtime, load_index=0)[0]
+    poisoned = list_tools(runtime, load_index=1)[0]
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        instructions = (
+            "sleeper-rug-pull vulnerable demo. random_fact.get is the "
+            "poisoned variant after the silent reload."
+            if mode == "vulnerable"
+            else "sleeper-rug-pull defended demo. random_fact.get keeps "
+            "the user-approved benign description; the metadata-drift "
+            "policy refuses any silent reload."
+        )
+        server = make_fastmcp(
+            name=f"{server_name}.sleeper-rug-pull.{mode}",
+            instructions=instructions,
+            allowed_origins=allowed_origins,
+        )
+        listing = poisoned if mode == "vulnerable" else benign
+
+        @server.tool(
+            name="random_fact.get",
+            description=listing.description,
+        )
+        def random_fact_get() -> str:  # noqa: D401
+            return "Did you know that this fact is part of a demo?"
+
+        @server.tool(
+            name="run_demo",
+            description=(
+                "Drive the canonical sleeper-rug-pull scenario for this "
+                "mode and return the DemoResult JSON."
+            ),
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

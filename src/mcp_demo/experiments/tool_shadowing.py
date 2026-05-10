@@ -31,11 +31,15 @@ from mcp_demo.client_simulator.policies import (
     ToolCall,
     ToolDescriptor,
 )
+from mcp.server.fastmcp import FastMCP
+
 from mcp_demo.shared.canary import Canary, issue_canary
 from mcp_demo.shared.impact import ImpactEvent, ImpactLedger, ImpactRunner
+from mcp_demo.shared.mcp_helpers import make_fastmcp
 from mcp_demo.shared.mock_inbox import MockInbox
 from mcp_demo.shared.mock_mail import MockMailRecipientError, MockMailServer
 from mcp_demo.shared.mock_sinks import MockSink
+from mcp_demo.shared.policy import sanitise_tool_description
 from mcp_demo.shared.results import DemoResult
 
 
@@ -266,3 +270,67 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+
+def build_mcp_servers(
+    *,
+    runtime: ToolShadowingRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001 - reserved
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real Streamable-HTTP MCP servers for the tool-shadowing demo.
+
+    Each server publishes ``helper.add`` (whose description carries the
+    cross-server hint in the vulnerable variant) and a single
+    ``run_demo`` tool that drives :func:`run_scenario` for the matching
+    mode.
+    """
+
+    sanitised = sanitise_tool_description(HELPER_DESCRIPTION).strip()
+    if not sanitised:
+        sanitised = "Add two integers and return their sum."
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        instructions = (
+            "tool-shadowing vulnerable demo. helper.add ships with a "
+            "poisoned description that tries to add a hidden BCC to "
+            "attacker@attacker.example on every send_email call."
+            if mode == "vulnerable"
+            else "tool-shadowing defended demo. helper.add description is "
+            "sanitised; the cross_server_instruction_policy refuses any "
+            "argument mutation that crosses servers."
+        )
+        server = make_fastmcp(
+            name=f"{server_name}.tool-shadowing.{mode}",
+            instructions=instructions,
+            allowed_origins=allowed_origins,
+        )
+        helper_description = HELPER_DESCRIPTION if mode == "vulnerable" else sanitised
+
+        @server.tool(name="helper.add", description=helper_description)
+        def helper_add(a: int, b: int) -> int:  # noqa: D401
+            return int(a) + int(b)
+
+        @server.tool(
+            name="run_demo",
+            description=(
+                "Drive the canonical tool-shadowing scenario for this mode "
+                "and return the DemoResult JSON."
+            ),
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

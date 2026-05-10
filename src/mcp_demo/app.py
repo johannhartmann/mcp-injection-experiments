@@ -77,6 +77,7 @@ from mcp_demo.experiments.ai_clickfix import (
 )
 from mcp_demo.experiments.implicit_tool_poisoning import (
     build_default_runtime as build_implicit_tp_runtime,
+    build_mcp_servers as build_implicit_tp_mcp_servers,
     run_scenario as run_implicit_tp_scenario,
 )
 from mcp_demo.experiments.comment_and_control import (
@@ -114,6 +115,7 @@ from mcp_demo.experiments.registry_rug_pull import (
 )
 from mcp_demo.experiments.sleeper_rug_pull import (
     build_default_runtime as build_sleeper_rug_pull_runtime,
+    build_mcp_servers as build_sleeper_rug_pull_mcp_servers,
     run_scenario as run_sleeper_rug_pull_scenario,
 )
 from mcp_demo.experiments.sampling_abuse import (
@@ -126,6 +128,7 @@ from mcp_demo.experiments.ssrf_metadata import (
 )
 from mcp_demo.experiments.tool_shadowing import (
     build_default_runtime as build_tool_shadowing_runtime,
+    build_mcp_servers as build_tool_shadowing_mcp_servers,
     run_scenario as run_tool_shadowing_scenario,
 )
 from mcp_demo.shared.impact import ImpactLedger
@@ -190,6 +193,22 @@ def create_app(
     scenario_runners: dict[str, Callable[[str, str], DemoResult]] = {}
     ledgers: list[ImpactLedger] = []
 
+    def _mount_mcp(experiment_id: str, builder, rt) -> None:
+        """Build and mount a per-mode FastMCP pair for ``experiment_id``."""
+
+        servers = builder(
+            runtime=rt,
+            server_name=settings.server_name,
+            server_version=settings.server_version,
+            allowed_origins=settings.allowed_origins,
+        )
+        for mode, server in servers.items():
+            app.mount(
+                f"/mcp/{experiment_id.removeprefix('remote-')}/{mode}",
+                server.streamable_http_app(),
+            )
+            mcp_servers.append(server)
+
     if "remote-direct-poisoning" in registry:
         rt = build_direct_poisoning_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
         runtimes["remote-direct-poisoning"] = rt
@@ -200,21 +219,14 @@ def create_app(
             )
         )
         # Mount one official MCP server per mode under
-        # /mcp/direct-poisoning/<mode>. Each server speaks the full
+        # /mcp/direct-poisoning/<mode>/. Each server speaks the full
         # Streamable-HTTP transport (initialize, tools/list, tools/call,
         # SSE) via the official mcp Python SDK.
-        servers = build_direct_poisoning_mcp_servers(
-            runtime=rt,
-            server_name=settings.server_name,
-            server_version=settings.server_version,
-            allowed_origins=settings.allowed_origins,
+        _mount_mcp(
+            "remote-direct-poisoning",
+            build_direct_poisoning_mcp_servers,
+            rt,
         )
-        for mode, server in servers.items():
-            app.mount(
-                f"/mcp/direct-poisoning/{mode}",
-                server.streamable_http_app(),
-            )
-            mcp_servers.append(server)
 
     if "remote-tool-shadowing" in registry:
         rt = build_tool_shadowing_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -225,6 +237,7 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp("remote-tool-shadowing", build_tool_shadowing_mcp_servers, rt)
 
     if "remote-sleeper-rug-pull" in registry:
         rt = build_sleeper_rug_pull_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -234,6 +247,9 @@ def create_app(
             lambda mode, sid, _rt=rt: run_sleeper_rug_pull_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-sleeper-rug-pull", build_sleeper_rug_pull_mcp_servers, rt
         )
 
     if "remote-registry-rug-pull" in registry:
@@ -308,6 +324,9 @@ def create_app(
             lambda mode, sid, _rt=rt: run_implicit_tp_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-implicit-tool-poisoning", build_implicit_tp_mcp_servers, rt
         )
 
     if "remote-comment-and-control" in registry:

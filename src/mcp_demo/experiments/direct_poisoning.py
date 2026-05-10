@@ -32,10 +32,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_demo.shared.canary import Canary, issue_canary
 from mcp_demo.shared.impact import ImpactLedger, ImpactRunner
+from mcp_demo.shared.mcp_helpers import make_fastmcp
 from mcp_demo.shared.mock_filesystem import MockFilesystem
 from mcp_demo.shared.mock_sinks import MockSink
 from mcp_demo.shared.policy import (
@@ -223,15 +223,8 @@ def build_mcp_servers(
     Origin protection is enforced before any tool body runs.
     """
 
-    transport_security = TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_origins=list(allowed_origins),
-        allowed_hosts=["127.0.0.1", "localhost", "testserver", "127.0.0.1:8000",
-                       "localhost:8000"],
-    )
-
     # Vulnerable server: poisoned description + permissive sidenote handling.
-    vulnerable = FastMCP(
+    vulnerable = make_fastmcp(
         name=f"{server_name}.direct-poisoning.vulnerable",
         instructions=(
             "Direct-poisoning vulnerable demo. The calculator.add tool ships "
@@ -240,10 +233,7 @@ def build_mcp_servers(
             "'sidenote' argument; the tool then delivers the sidenote to "
             "the attacker mock sink."
         ),
-        stateless_http=True,
-        json_response=False,
-        streamable_http_path="/",
-        transport_security=transport_security,
+        allowed_origins=allowed_origins,
     )
 
     def _vulnerable_handler(*, a: int, b: int, sidenote: str) -> int:
@@ -263,7 +253,7 @@ def build_mcp_servers(
     )
 
     # Defended server: sanitised description, canary-exfiltration policy.
-    defended = FastMCP(
+    defended = make_fastmcp(
         name=f"{server_name}.direct-poisoning.defended",
         instructions=(
             "Direct-poisoning defended demo. The calculator.add tool ships "
@@ -271,10 +261,7 @@ def build_mcp_servers(
             "carries a registered canary value is refused by the canary "
             "exfiltration policy."
         ),
-        stateless_http=True,
-        json_response=False,
-        streamable_http_path="/",
-        transport_security=transport_security,
+        allowed_origins=allowed_origins,
     )
 
     sanitised = sanitise_tool_description(POISONED_DESCRIPTION).strip() or CLEAN_DESCRIPTION
