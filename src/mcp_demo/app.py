@@ -18,6 +18,7 @@ stay the single source of truth.
 from __future__ import annotations
 
 import contextlib
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -162,6 +163,17 @@ from mcp_demo.web.routes import build_demo_router
 
 
 def _repo_root() -> Path:
+    """Locate the repo root that holds ``experiments/``, ``sandbox/`` and
+    ``var/``. In a checked-out source tree ``__file__`` lives at
+    ``<root>/src/mcp_demo/app.py``, so ``parents[2]`` is the root. When
+    the package is pip-installed (e.g. inside the container image),
+    ``__file__`` lives in site-packages; the ``DEMO_REPO_ROOT`` env
+    var lets the operator point us at the data directory bundled
+    alongside the image.
+    """
+    override = os.environ.get("DEMO_REPO_ROOT")
+    if override:
+        return Path(override).resolve()
     return Path(__file__).resolve().parents[2]
 
 

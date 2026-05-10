@@ -10,17 +10,14 @@ RUN groupadd --system --gid 10001 mcp && \
 
 WORKDIR /app
 
-# Install dependencies first so subsequent code changes do not bust the layer.
-COPY pyproject.toml ./
-RUN python -m pip install --upgrade pip && \
-    python -m pip install \
-        "pydantic>=2.7,<3" \
-        "pyyaml>=6,<7" \
-        "fastapi>=0.111,<1" \
-        "starlette>=0.37,<1" \
-        "uvicorn[standard]>=0.30,<1"
-
+# Install runtime dependencies via pyproject so the image cannot drift
+# from the source tree's declared deps. ``.[http]`` brings in
+# fastapi/starlette/uvicorn alongside mcp/pydantic/pyyaml.
+COPY pyproject.toml README.md ./
 COPY src ./src
+RUN python -m pip install --upgrade pip && \
+    python -m pip install ".[http]"
+
 COPY experiments ./experiments
 COPY sandbox ./sandbox
 COPY tests/fixtures ./tests/fixtures
@@ -37,7 +34,7 @@ ENV DEMO_BIND_HOST=0.0.0.0 \
     DEMO_BIND_PORT=8000 \
     DEMO_EGRESS_MODE=deny \
     DEMO_ENABLE_LOCAL_CALC_PROOF=false \
-    PYTHONPATH=/app/src
+    DEMO_REPO_ROOT=/app
 
 CMD ["python", "-m", "uvicorn", "mcp_demo.app:create_app", "--factory", \
      "--host", "0.0.0.0", "--port", "8000", \
