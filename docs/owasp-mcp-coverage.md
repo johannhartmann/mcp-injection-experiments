@@ -6,23 +6,23 @@ Legende:
 
 - **Aktuelle Abdeckung**: Was im Repo *heute* in lauffaehiger oder zumindest dokumentierter Form vorhanden ist.
 - **Geplante Remote-Demo**: Welches Experiment bzw. welcher Endpoint die Kategorie spaeter abdeckt.
-- **Teststatus**: `none` | `planned` | `red` | `green`.
+- **Teststatus**: `none` | `green` | `red` | `green`.
 - **Mock-Surface**: Welche Demo-Komponenten den Effekt sichtbar machen, ohne echte Systeme zu beruehren.
 
 ## Coverage-Matrix MCP01..MCP10
 
-| OWASP | Titel | Aktuelle Abdeckung | Geplante Remote-Demo | Mock-Surface | Teststatus |
-|---|---|---|---|---|---|
-| MCP01 | Token Mismanagement und Secret Exposure | Historisch in `direct-poisoning.py` (poisoned tool description liest `~/.cursor/mcp.json`, `~/.ssh/id_rsa.pub`). Nicht testbar, unsicher. | `remote-direct-poisoning` (Canary statt echter Datei), `remote-auth-confused-deputy` (Fake-OAuth-Audience). | Mock-Filesystem mit Canary-Datei, Mock-Sink, Fake-OAuth-Issuer. | `planned` |
-| MCP02 | Privilege Escalation via Scope Creep | Nicht abgedeckt. | `remote-registry-rug-pull` (Permission-Delta zwischen Pin und Update, Re-Approval-Pflicht im defended Mode). | Fake-Registry mit zwei Versionen, Permission-Diff-Engine, Mock-Sink. | `planned` |
-| MCP03 | Tool Poisoning | Historisch in `direct-poisoning.py` und `shadowing.py` (poisoned descriptions, hidden instructions). Nur als STDIO-Snippet. | `remote-direct-poisoning`, `remote-tool-shadowing` (Cross-Server-Instruction-Linter im defended Mode). | Tool-Description-Linter, Cross-Server-Policy, Mock-Mail, Mock-Sink. | `planned` |
-| MCP04 | Supply Chain Attacks | Historisch angedeutet in `whatsapp-takeover.py` (Sleeper Rug Pull via `~/.mcp-triggered`). | `remote-sleeper-rug-pull` (Tool-Description-/Schema-Hash-Diff), `remote-registry-rug-pull` (Pinning, Hash-Diff, Version-Lock). | Fake-Registry, Description-Hash-Diff, Telemetry-Event bei Drift. | `planned` |
-| MCP05 | Command Injection und Execution | Negativ vorhanden: Snippets nutzen `os.system("touch ~/.mcp-triggered")`. Wird in der neuen Demo nicht reproduziert. | Nur als Konfig-/Allowlist-Simulation; Effekt wird auf `sandbox/effects/rce-proof-<session>.txt` reduziert (`ImpactRunner`). Kein User-Input in Subprozess. | `ImpactRunner` mit fester Allowlist, Mock-Filesystem. | `planned` |
-| MCP06 | Contextual Injection | Historisch in den poisoned descriptions. | `remote-direct-poisoning` (Tainting), `remote-sampling-abuse` (Context Boundaries und Budget). | Tainting-Tags an Tool-Outputs, Fake-LLM, Budgetzaehler. | `planned` |
-| MCP07 | Insufficient AuthN/AuthZ | Nicht abgedeckt. | `remote-auth-confused-deputy` (Audience-Validation, per-Client-Consent, Redirect-URI-Check). | Fake-OAuth-Issuer, Fake-Resource-Server, Audience-Checker. | `planned` |
-| MCP08 | Lack of Audit and Telemetry | Nicht abgedeckt. | `audit-telemetry-dashboard` (Event Timeline, JSONL-Ledger, UI-Visualisierung), zusaetzlich Telemetry-Events in jedem Experiment. | `var/telemetry.jsonl`, Impact Ledger, Web-Dashboard. | `planned` |
-| MCP09 | Shadow MCP Servers | Historisch in `shadowing.py` (poisoned add-Tool manipuliert Verhalten eines fremden `send_email`). | `remote-tool-shadowing` (Trusted-Server-Registry, Server-Identity-Pruefung, Cross-Server-Instruction-Block). | Trusted-Server-Allowlist, Mock-Mail mit Identity-Tag, Telemetry. | `planned` |
-| MCP10 | Context Injection und Over-Sharing | Nicht abgedeckt. | `remote-cross-session-context-leak` (zwei Demo-Sessions, Canary aus Session A leakt in Session B im vulnerable Mode). | Zwei isolierte Sessions, Event Queue partitioniert nach `user_id:session_id`. | `planned` |
+| OWASP | Titel | Implementiert in | Mock-Surface | Teststatus |
+|---|---|---|---|---|
+| MCP01 | Token Mismanagement und Secret Exposure | `remote-direct-poisoning`, `remote-auth-confused-deputy` | Mock-Filesystem + Canary-Datei, Mock-Sink, FAKEJWT-Issuer | `green` |
+| MCP02 | Privilege Escalation via Scope Creep | `remote-registry-rug-pull` | Fake-Registry, `permission_delta`, Pinning | `green` |
+| MCP03 | Tool Poisoning | `remote-direct-poisoning`, `remote-tool-shadowing`, `remote-sleeper-rug-pull` | `lint_tool_description`, `sanitise_tool_description`, Tool-Hash-Pinning | `green` |
+| MCP04 | Supply Chain Attacks | `remote-sleeper-rug-pull`, `remote-registry-rug-pull` | Description-/Schema-Hash-Diff, Fake-Registry mit Pinning | `green` |
+| MCP05 | Command Injection und Execution (sim) | `remote-ssrf-metadata`, `ImpactRunner.run_local_calc_proof` (default off) | `MockResolver`, fest verdrahteter ImpactRunner ohne User-Input | `green` |
+| MCP06 | Contextual Injection | `remote-direct-poisoning`, `remote-sampling-abuse` | Tool-Description-Linter, FakeLLM, `SamplingPolicy` | `green` |
+| MCP07 | Insufficient AuthN/AuthZ | `remote-auth-confused-deputy` | FAKEJWT-Issuer, ConsentRegistry mit Demo-Zone-Redirect-URIs | `green` |
+| MCP08 | Lack of Audit and Telemetry | `audit-telemetry-dashboard`, alle Experimente | `ImpactLedger`, `TelemetryView`, `var/telemetry.jsonl`, `/demo/events` | `green` |
+| MCP09 | Shadow MCP Servers | `remote-tool-shadowing` | `CrossServerInstructionPolicy`, MockMailServer mit `.example`-Allowlist | `green` |
+| MCP10 | Context Injection und Over-Sharing | `remote-cross-session-context-leak` | `PartitionedSessionStore`, `EventQueue` per `(user_id, session_id)` | `green` |
 
 ## Cross-Mapping zu Demo-Endpunkten
 

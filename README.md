@@ -9,9 +9,114 @@
 > `validate_for_public_mode()` durchlaeuft. Details in
 > `docs/security-review.md` und `docs/deployment.md`.
 
-Dieses Prompt-Pack ist dafuer gedacht, das Repository `johannhartmann/mcp-injection-experiments` schrittweise in eine sichere Online-Demo-Suite umzubauen.
+Dieses Repository enthaelt eine sichere, didaktische MCP-Online-Demo:
+acht Experimente fuer typische OWASP-MCP-Top-10-Risiken, jeweils in einem
+verwundbaren und einem verteidigten Modus, hinter einem Streamable-HTTP-
+Endpoint plus einem schmalen Audit-Dashboard. Alle Effekte bleiben in
+Mock-Sinks, Mock-Inboxen, `sandbox/effects/` und JSONL-Telemetry.
 
-Zielbild:
+## Was ist das?
+
+- **Eine Demo, kein Penetrations-Tool.** Jeder Angriff arbeitet mit
+  Canary-Daten und Fake-Targets. Es gibt kein echtes LLM, keine echte
+  Mail, keine echten Tokens, keine echten Outbound-Requests.
+- **Vulnerable vs. defended.** Pro Experiment laeuft derselbe Pfad zwei
+  Mal: einmal mit fehlender Mitigation, einmal mit eingebauter Policy.
+  Der Unterschied ist immer in der UI, im Telemetry-Log und im
+  Demo-Artefakt sichtbar.
+- **Test-first.** Jede Aenderung kommt mit Unit- und Integrationstests.
+  `uv run pytest` ist die einzige Validierung, die zaehlt.
+
+## Quickstart
+
+### Lokal
+
+```bash
+uv sync --all-extras
+uv run pytest                       # 294 Tests, < 1 s
+uv run uvicorn mcp_demo.app:create_app \
+  --factory --host 127.0.0.1 --port 8000
+```
+
+Anschliessend:
+
+- `http://127.0.0.1:8000/demo` - Experiment-UI mit Run-Buttons.
+- `http://127.0.0.1:8000/demo/events` - Telemetry-Timeline.
+- `http://127.0.0.1:8000/healthz` und `/readyz` - Probes.
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+Container laeuft als unprivilegierter User, Filesystem read-only,
+`tmpfs` fuer `var/` und `sandbox/effects/`, `cap_drop: ALL`. Details und
+Public-Mode-Konfiguration in [`docs/deployment.md`](docs/deployment.md).
+
+## Experimente und OWASP-Mapping
+
+| Experiment | OWASP MCP | Vulnerable Impact | Defended Block | Status |
+|---|---|---|---|---|
+| `remote-direct-poisoning` | MCP01, MCP03, MCP06 | Canary in `MockSink` | `canary_exfiltration_policy` | green |
+| `remote-tool-shadowing` | MCP03, MCP09, MCP10 | Hidden BCC in `var/mock-inbox.jsonl` | `cross_server_instruction_policy` | green |
+| `remote-sleeper-rug-pull` | MCP03, MCP04 | `sandbox/effects/rug-pull-<sid>.json` | `tool_metadata_drift_policy` | green |
+| `remote-registry-rug-pull` | MCP02, MCP04 | `sandbox/effects/registry-rug-pull-<sid>.json` mit `permission_delta` | `registry_pinning_policy` | green |
+| `remote-cross-session-context-leak` | MCP10, MCP08 | Canary aus Session A erscheint in Session B | `session_isolation_policy` | green |
+| `remote-auth-confused-deputy` | MCP01, MCP07 | Fake-CRM mutiert via wrong-audience FAKEJWT | `audience_mismatch` / `consent_missing` | green |
+| `remote-ssrf-metadata` | MCP05 (sim), MCP01 | `sandbox/effects/ssrf-metadata-<sid>.json` mit IMDS-IP | `url_safety_policy` | green |
+| `remote-sampling-abuse` | MCP06, MCP08 | `SamplingBudget` Counter sinkt | `sampling_policy` | green |
+
+Vollstaendige Coverage-Matrix in
+[`docs/owasp-mcp-coverage.md`](docs/owasp-mcp-coverage.md). Pro Experiment-
+Manifest unter [`experiments/manifests/`](experiments/manifests/).
+
+## Vulnerable vs. defended
+
+Jedes Experiment akzeptiert pro Run einen Modus:
+
+```json
+POST /demo/scenario/<experiment_id>
+{ "mode": "vulnerable" | "defended", "session_id": "..." }
+```
+
+Antwort: ein vollstaendiges `DemoResult` mit `experiment`, `mode`,
+`violation_detected`, `secret_exfiltrated`, `blocked_by`, `events`.
+
+- **Vulnerable** erzeugt einen *echten*, aber bounded Impact (Mock-
+  Sink, Mock-Inbox, Sandbox-Effekt-Datei, Counter, Telemetry-Event).
+- **Defended** verhindert denselben Impact und persistiert einen
+  `blocked_attempt_recorded`-Event mit Rule-ID und Begruendung.
+
+Komplette API in [`docs/api.md`](docs/api.md). 15-/30-Minuten-
+Demoablauf in [`docs/demo-script.md`](docs/demo-script.md). Operative
+Notes (Reset, Logging, Public-Mode, Troubleshooting) in
+[`docs/operations.md`](docs/operations.md).
+
+## Safety Model
+
+- **Canaries statt Secrets.** `mcp_demo.shared.canary` erzeugt
+  `CANARY_<experiment>_<hex>` Marker, MockSink registriert sie pro
+  Session.
+- **Mock-Filesystem statt Userpfade.** `MockFilesystem` refused
+  Pfad-Traversal, Symlink-Escapes, Home-References und einen
+  Blocklist von Attacker-Targets.
+- **Mock-Mail statt SMTP.** `MockMailServer` nimmt nur `.example`-
+  Adressen, Tests asserten via `smtplib`-Monkeypatch, dass kein
+  Outbound-Code existiert.
+- **Mock-Resolver statt DNS.** `MockResolver` ist die einzige
+  Quelle fuer Hostname -> IP, `classify_url` blockt Loopback,
+  Link-local, private und IMDS-Adressen.
+- **Fake-OAuth statt JWT.** `FakeTokenIssuer` produziert
+  `FAKEJWT.<payload>.fake`-Strings; jeder Verifikations-Fail ist
+  benannt (`audience_mismatch`, `expired`, `scope_insufficient`,
+  `signature_invalid`, `consent_missing`).
+- **Telemetry-Scrubbing.** `scrub_payload` redacted Bearer/PAT/sk-/
+  api_key=-Muster; `CANARY_*` bleibt sichtbar.
+
+Volle Beweisfuehrung in [`docs/security-review.md`](docs/security-review.md).
+
+Zielbild der Suite weiterhin:
 
 - MCP-Server sind per Streamable HTTP erreichbar, z. B. `/mcp/direct-poisoning`.
 - Eine kontrollierte Web-Demo bzw. ein MCP-Client-Simulator zeigt verwundbare und verteidigte Varianten nebeneinander.
