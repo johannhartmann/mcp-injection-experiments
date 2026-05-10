@@ -1,0 +1,29 @@
+id: remote-cross-session-context-leak
+title: Remote Cross-Session Context Leak
+owasp:
+  - MCP10
+  - MCP08
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/cross-session-leak
+expected_vulnerable_result: observer_session_sees_other_user_canary
+expected_defended_result: partitioned_store_blocks_cross_session_lookup
+mitigations:
+  - session_isolation_policy
+  - state_partitioned_by_user_and_session
+  - per_partition_event_ids
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+impact:
+  vulnerable:
+    type: session_leak_visible
+    artifact: var/telemetry.jsonl
+    user_visible: observer_received_other_user_canary
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: cross_session_lookup_refused

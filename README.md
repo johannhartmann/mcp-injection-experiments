@@ -333,6 +333,48 @@ Sicherheitsgrenzen: keine echte Registry, kein Download, keine
 Paket-Installation. Alle Manifeste leben in
 `tests/fixtures/registry/*.yaml`.
 
+## Remote Cross-Session Context Leak
+
+`remote-cross-session-context-leak` zeigt einen Bug-Pattern, das in
+Remote-MCP-Servern besonders heimtueckisch ist: wenn Server-Zustand nur
+nach `session_id` gesleudt wird statt nach `(user_id, session_id)`,
+kann ein Client B durch zufaellige oder erratbare Session-IDs den
+Zustand eines Clients A einsehen.
+
+Komponenten:
+
+- `shared/session_store.py`: `PartitionedSessionStore` haelt State unter
+  `(user_id, session_id, key)` mit lazy TTL-Eviction. Lookup mit
+  passender `session_id` aber falschem `user_id` raised
+  `SessionLookupError` - die Session-ID alleine ist keine
+  Authentisierung.
+- `shared/event_queue.py`: `EventQueue` partitioniert publizierte
+  Events per `(user_id, session_id)` und vergibt prozessweite
+  eindeutige Event-IDs, sodass eine resumable SSE-`Last-Event-Id` aus
+  Session A keine State-Lookups in Session B ermoeglichen kann.
+- `experiments/cross_session_leak.py`: zwei Subjects, eine vulnerable
+  und eine defended Lookup-Variante. Der vulnerable Pfad nutzt einen
+  flachen `dict[session_id, record]`, also genau den Bug, der im
+  echten Code auftritt; der defended Pfad nutzt den partitionierten
+  Store und blockiert mit `session_isolation_policy`.
+
+Modus-Verhalten:
+
+- `vulnerable`: Client B (Bob) erhaelt im `DemoResult.events` einen
+  Eintrag mit `payload = <Alice's Canary>`. Der Sink markiert das als
+  `secret_exfiltrated=True`, ein `session_leak_visible`-Event landet
+  im JSONL-Telemetry-Log.
+- `defended`: jeder Cross-Session-Lookup raised `SessionLookupError`,
+  der Versuch wird als `session_isolation_block`-Event gemeldet,
+  `record_blocked_attempt` schreibt `blocked_attempt_recorded` mit
+  Begruendung. `DemoResult.blocked_by =
+  ["session_isolation_policy"]`.
+
+Sicherheitsgrenzen: alle Werte sind Demo-Canaries mit klarem `CANARY_*`-
+Marker. Es gibt keine echten Nutzerprofile. Die Demo dokumentiert
+ausdruecklich, dass die Session-ID nicht als Authentication verwendet
+werden darf.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
