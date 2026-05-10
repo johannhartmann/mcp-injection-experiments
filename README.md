@@ -71,6 +71,22 @@ Vollstaendige Coverage-Matrix in
 [`docs/owasp-mcp-coverage.md`](docs/owasp-mcp-coverage.md). Pro Experiment-
 Manifest unter [`experiments/manifests/`](experiments/manifests/).
 
+### Expansion 2025-2026 (17 Experimente)
+
+Die Follow-up-Suite (`phase: expansion-2025-2026`) implementiert
+17 weitere Demos rund um GitHub-/Slack-MCP-Leaks, Filesystem-Sandbox-
+Escape, MCP-Inspector / `mcp-remote` RCE-Klassen, TrustFall-Onboarding,
+Cross-Agent-Config-Eskalation, Promptware-Heartbeat, AI ClickFix,
+Implicit Tool Poisoning, Comment-and-Control sowie die sechs
+Agent-Trap-Familien (Hidden HTML, Memory Poisoning, Subagent Spawning,
+Approval Fatigue, Sybil/Fragments, Git+FS Chain). Vollstaendiger
+Katalog mit MCP-Surfaces, Vulnerable-Artefakt und Defended-Control:
+[`docs/exploit-catalog-2025-2026.md`](docs/exploit-catalog-2025-2026.md).
+Forschungs-Quellen pro Demo:
+[`docs/expansion-source-notes.md`](docs/expansion-source-notes.md).
+Trap-Familien-Mapping:
+[`docs/agent-traps-mcp-mapping.md`](docs/agent-traps-mcp-mapping.md).
+
 ## Vulnerable vs. defended
 
 Jedes Experiment akzeptiert pro Run einen Modus:
