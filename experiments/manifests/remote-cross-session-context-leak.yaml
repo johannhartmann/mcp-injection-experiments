@@ -27,3 +27,9 @@ impact:
     type: blocked_attempt_recorded
     artifact: var/telemetry.jsonl
     user_visible: cross_session_lookup_refused
+narrative:
+  "vulnerable": "Session A stores a canary in shared agent memory. Session B, running\
+    \ on the same vulnerable server, queries memory and receives session A's canary\
+    \ - cross-tenant context leak."
+  "defended": "The session_isolation_policy partitions memory by session_id so session\
+    \ B's read returns only its own entries."

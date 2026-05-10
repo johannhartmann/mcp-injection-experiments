@@ -21,3 +21,9 @@ safe_impact:
 references:
   - https://github.com/advisories/GHSA-7f8r-222p-6f5g
   - https://www.oligo.security/blog/critical-rce-vulnerability-in-anthropic-mcp-inspector-cve-2025-49596
+narrative:
+  "vulnerable": "The launch_server tool starts a subprocess MCP server when an admin_token\
+    \ is presented. The default admin_token is the literal 'admin' string and Origin\
+    \ checks are off, so any session can spin up a privileged subprocess."
+  "defended": "The defended path requires a non-default admin_token from a secret, enforces\
+    \ Origin allowlist, and rejects launches whose session_id does not match."

@@ -90,6 +90,22 @@ class ImpactBlock(BaseModel):
     defended: ImpactDescriptor | None = None
 
 
+class NarrativeBlock(BaseModel):
+    """Plain-English description of what the demo actually does, used
+    as the primary teaching text on the compare page.
+
+    Both fields are short paragraphs (1-3 sentences). ``vulnerable``
+    explains how the attack lands; ``defended`` explains the rule that
+    catches it. Authoring guideline: write what a reader would tell a
+    colleague over coffee, not the structured outcome string.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vulnerable: str = Field(min_length=1)
+    defended: str = Field(min_length=1)
+
+
 class SafeImpactBlock(BaseModel):
     """Demo-zone artefact contract used by expansion-phase manifests."""
 
@@ -155,6 +171,11 @@ class ExperimentManifest(BaseModel):
     phase: Phase = "baseline"
     mcp_surfaces: list[str] = Field(default_factory=list)
     safe_impact: SafeImpactBlock | None = None
+
+    # Cross-phase: optional plain-English narrative for the compare
+    # page. When absent the page falls back to the experiment module's
+    # docstring plus the structured outcome strings.
+    narrative: NarrativeBlock | None = None
 
     @field_validator("mode_support")
     @classmethod

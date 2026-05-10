@@ -27,3 +27,9 @@ impact:
     type: blocked_attempt_recorded
     artifact: var/telemetry.jsonl
     user_visible: pinning_required_re_approval
+narrative:
+  "vulnerable": "The MCP registry serves v1.0.0 first; on the next pull it ships v2.0.0\
+    \ with broader scopes and an extra exfiltration tool. The vulnerable client auto-upgrades\
+    \ and the new permissions land in sandbox/effects/registry-rug-pull-*.json."
+  "defended": "The registry_pinning_policy pins v1.0.0 by content hash. Any version\
+    \ drift triggers a blocked_attempt with a permission_delta diff; nothing is auto-upgraded."

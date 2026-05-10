@@ -261,30 +261,45 @@ def _format_session_telemetry(events: list[TelemetryEvent]) -> str:
     return _artefact_card("telemetry events for this run", "".join(lines))
 
 
+def _summarise_value(v: Any, *, max_len: int = 160) -> str:
+    """Compact one-line summary of any value for the primary view.
+
+    Lists and dicts are summarised as ``[N items]`` / ``{N keys}``;
+    long strings get truncated. The full structured value still lives
+    in the developer-view <details> at the bottom of the page.
+    """
+    if isinstance(v, dict):
+        return f"&#x7b;{len(v)} keys&#x7d;"
+    if isinstance(v, list):
+        if not v:
+            return "[]"
+        return f"[{len(v)} items]"
+    s = str(v)
+    if len(s) > max_len:
+        return html.escape(s[:max_len] + "...")
+    return html.escape(s)
+
+
 def _format_demo_events(events: list[dict[str, Any]]) -> str:
     """Render the experiment-author-curated DemoResult.events as a
-    readable key/value list rather than raw JSON."""
+    one-line-per-key card. Nested structures show their shape only;
+    the raw JSON lives in the developer-view <details> block."""
+
     if not events:
         return ""
     blocks: list[str] = []
     for ev in events:
         rows: list[str] = []
         for k, v in ev.items():
+            if k == "type":
+                continue  # already used as the card label
             key = html.escape(_humanize(str(k)))
-            if isinstance(v, (dict, list)):
-                rendered = (
-                    f'<pre>{html.escape(json.dumps(v, indent=2, ensure_ascii=False))}</pre>'
-                )
-            else:
-                s = str(v)
-                if len(s) > 240:
-                    s = s[:240] + "..."
-                rendered = f"<code>{html.escape(s)}</code>"
+            rendered = f"<code>{_summarise_value(v)}</code>"
             rows.append(
-                '<div style="display:grid;grid-template-columns:160px 1fr;gap:0.4rem;'
+                '<div style="display:grid;grid-template-columns:170px 1fr;gap:0.4rem;'
                 'margin:0.15rem 0;align-items:start;">'
                 f'<div style="color:#666;font-size:0.78rem;">{key}</div>'
-                f"<div>{rendered}</div></div>"
+                f"<div style='font-size:0.85rem;'>{rendered}</div></div>"
             )
         blocks.append(
             _artefact_card(
@@ -295,11 +310,54 @@ def _format_demo_events(events: list[dict[str, Any]]) -> str:
     return "".join(blocks)
 
 
+def _outcome_text(
+    *,
+    mode: str,
+    narrative_text: str | None,
+    user_visible: str | None,
+    expected_result: str | None,
+    artefacts_fallback: list[str],
+    result: DemoResult,
+) -> str:
+    """Pick the best plain-language description, in priority order:
+
+    1. The manifest's ``narrative.{mode}`` paragraph (preferred).
+    2. The legacy ``impact.{mode}.user_visible`` snake_case label,
+       humanised.
+    3. The legacy ``expected_{mode}_result`` string, humanised.
+    4. A synthesised description from the DemoResult and listed
+       artefact paths (last-resort fallback).
+    """
+    if narrative_text:
+        return narrative_text
+    if user_visible:
+        return _humanize(user_visible) + "."
+    if expected_result:
+        return _humanize(expected_result) + "."
+    # Synthesise from DemoResult + safe_impact paths.
+    if mode == "vulnerable" and result.violation_detected and not result.blocked_by:
+        artefact_str = (
+            ", ".join(f"`{a}`" for a in artefacts_fallback)
+            if artefacts_fallback
+            else "the demo ledger"
+        )
+        return (
+            f"The vulnerable scenario produced an observable side effect in "
+            f"{artefact_str}."
+        )
+    if mode == "defended" and result.blocked_by:
+        rules = ", ".join(f"`{r}`" for r in result.blocked_by)
+        return f"The defended scenario blocked the action via {rules}."
+    return "The scenario ran without an observable violation."
+
+
 def _outcome_card(
     *,
     mode: str,
     result: DemoResult,
     manifest_impact: Any,
+    safe_impact_artifacts: list[str],
+    narrative_text: str | None,
     expected_result: str | None,
     mitigations: list[str],
     rule_id: str | None,
@@ -331,23 +389,38 @@ def _outcome_card(
         manifest_impact.artifact if manifest_impact is not None else None
     )
 
+    outcome_paragraph = _outcome_text(
+        mode=mode,
+        narrative_text=narrative_text,
+        user_visible=user_visible,
+        expected_result=expected_result,
+        artefacts_fallback=safe_impact_artifacts,
+        result=result,
+    )
+
     parts: list[str] = []
     parts.append(f'<div class="headline {headline_class}">{headline}</div>')
+    parts.append(f'<div class="outcome">{html.escape(outcome_paragraph)}</div>')
 
-    if user_visible:
-        parts.append(
-            f'<div class="outcome">{html.escape(_humanize(user_visible))}.</div>'
-        )
-    elif expected_result:
-        parts.append(
-            f'<div class="outcome">{html.escape(_humanize(expected_result))}.</div>'
-        )
-
+    # Where the demo landed: legacy single artefact path or expansion-
+    # phase list of paths.
     if artefact_path:
         parts.append(
             _artefact_card(
                 "where it landed",
                 f"<code>{html.escape(artefact_path)}</code>",
+            )
+        )
+    elif safe_impact_artifacts:
+        parts.append(
+            _artefact_card(
+                "where it landed",
+                "<ul style='margin:0.2rem 0 0 1rem;padding:0;'>"
+                + "".join(
+                    f"<li><code>{html.escape(a)}</code></li>"
+                    for a in safe_impact_artifacts
+                )
+                + "</ul>",
             )
         )
 
@@ -479,11 +552,29 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
 
         impact_v = manifest.impact.vulnerable if manifest.impact else None
         impact_d = manifest.impact.defended if manifest.impact else None
+        safe_v = (
+            manifest.safe_impact.vulnerable_artifacts
+            if manifest.safe_impact
+            else []
+        )
+        safe_d = (
+            manifest.safe_impact.defended_artifacts
+            if manifest.safe_impact
+            else []
+        )
+        narrative_v = (
+            manifest.narrative.vulnerable if manifest.narrative else None
+        )
+        narrative_d = (
+            manifest.narrative.defended if manifest.narrative else None
+        )
 
         outcome_v = _outcome_card(
             mode="vulnerable",
             result=result_v,
             manifest_impact=impact_v,
+            safe_impact_artifacts=safe_v,
+            narrative_text=narrative_v,
             expected_result=manifest.expected_vulnerable_result,
             mitigations=[],
             rule_id=rule_id,
@@ -493,6 +584,8 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
             mode="defended",
             result=result_d,
             manifest_impact=impact_d,
+            safe_impact_artifacts=safe_d,
+            narrative_text=narrative_d,
             expected_result=manifest.expected_defended_result,
             mitigations=manifest.mitigations,
             rule_id=rule_id,

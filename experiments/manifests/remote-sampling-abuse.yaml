@@ -28,3 +28,9 @@ impact:
     type: blocked_attempt_recorded
     artifact: var/telemetry.jsonl
     user_visible: sampling_policy_refused_request
+narrative:
+  "vulnerable": "The summarise tool spawns recursive sampling calls without a budget.\
+    \ A poisoned input causes runaway requests - the SamplingBudget counter sinks below\
+    \ zero and would have run up the LLM bill on a real provider."
+  "defended": "sampling_policy enforces depth and per-session token ceilings, refuses\
+    \ calls that exceed them, and records the decision in telemetry."

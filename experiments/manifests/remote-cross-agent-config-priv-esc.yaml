@@ -25,3 +25,9 @@ safe_impact:
 references:
   - https://embracethered.com/blog/posts/2025/cross-agent-privilege-escalation-agents-that-free-each-other/
   - https://simonwillison.net/2025/Sep/24/cross-agent-privilege-escalation/
+narrative:
+  "vulnerable": "Agent A writes into agent B's config directory because the filesystem\
+    \ grants both roles the same user. B's config now loads instructions A picked, escalating\
+    \ across agent boundaries."
+  "defended": "The defended path requires a writer_role -> target_agent matrix; cross-agent\
+    \ writes are refused unless the matrix explicitly allows them."

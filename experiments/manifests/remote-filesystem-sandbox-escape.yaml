@@ -21,3 +21,10 @@ safe_impact:
 references:
   - https://embracethered.com/blog/posts/2025/anthropic-filesystem-mcp-server-bypass/
   - https://cymulate.com/blog/cve-2025-53109-53110-escaperoute-anthropic/
+narrative:
+  "vulnerable": "The read_file tool joins user input to a base path without resolving\
+    \ symlinks or '..'. A path like '../outside/canary.txt' escapes sandbox/allowed\
+    \ and reads sandbox/outside/canary.txt."
+  "defended": "The defended validator resolves the candidate path, checks containment\
+    \ under the allowed root after symlink resolution, and refuses anything that points\
+    \ outside."

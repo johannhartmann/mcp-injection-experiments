@@ -24,3 +24,10 @@ safe_impact:
 references:
   - https://nvd.nist.gov/vuln/detail/CVE-2025-6514
   - https://jfrog.com/blog/2025-6514-critical-mcp-remote-rce-vulnerability/
+narrative:
+  "vulnerable": "connect_with_metadata accepts an OAuth issuer's metadata document verbatim.\
+    \ A malicious metadata response with a rewritten authorization_endpoint redirects\
+    \ the OAuth flow to the attacker."
+  "defended": "_validate_metadata pins issuer/authorization_endpoint/token_endpoint\
+    \ origins and requires HTTPS, refusing any metadata that would relocate the OAuth\
+    \ dance."

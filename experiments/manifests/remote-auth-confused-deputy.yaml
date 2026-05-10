@@ -28,3 +28,10 @@ impact:
     type: blocked_attempt_recorded
     artifact: var/telemetry.jsonl
     user_visible: token_passthrough_blocked_with_failed_check
+narrative:
+  "vulnerable": "The update_profile tool accepts a FAKEJWT bearer and applies the change\
+    \ as long as the token decodes. A token whose audience claim names a different service\
+    \ still works - the fake CRM gets mutated by the wrong principal."
+  "defended": "The wrapper validates aud, exp, scope subset, and the per-client/per-redirect-uri\
+    \ consent record before forwarding the call. Wrong-audience tokens are rejected\
+    \ with explicit reasons in telemetry."

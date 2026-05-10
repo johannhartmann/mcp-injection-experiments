@@ -28,3 +28,10 @@ impact:
     type: blocked_attempt_recorded
     artifact: var/telemetry.jsonl
     user_visible: classifier_refused_internal_ip
+narrative:
+  "vulnerable": "The fetch_metadata tool resolves URLs through a naive client that accepts\
+    \ cloud-metadata IPs (169.254.169.254) and other internal targets. The simulated\
+    \ IMDS endpoint is reached and recorded in sandbox/effects/ssrf-metadata-*.json."
+  "defended": "url_safety_policy classifies the URL through a mock resolver, rejects\
+    \ link-local / RFC1918 / metadata addresses before any request is issued, and records\
+    \ the block."
