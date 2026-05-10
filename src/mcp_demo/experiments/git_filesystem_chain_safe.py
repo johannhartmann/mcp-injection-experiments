@@ -153,3 +153,87 @@ def run_scenario(
             }
         ],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: GitFilesystemChainRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes get_git_diff (returns the
+    poisoned mock-git output) and apply_diff_to_filesystem (the
+    cross-server sink) plus run_demo. Vulnerable mode lets the
+    mock-filesystem write a sandbox file derived from the mock-git
+    output; defended mode refuses with the
+    untrusted_git_to_filesystem_policy."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.git-fs-chain.{mode}",
+            instructions=(
+                "git+fs vulnerable demo: untrusted git output drives a "
+                "filesystem write."
+                if mode == "vulnerable"
+                else "git+fs defended demo: filesystem writes refuse any "
+                "input that originated from untrusted mock-git output."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="get_git_diff",
+            description="Return the latest mock-git diff (untrusted_source).",
+        )
+        def get_git_diff() -> str:  # noqa: D401
+            return _GIT_DIFF
+
+        @server.tool(
+            name="apply_diff_to_filesystem",
+            description=(
+                "Apply the supplied diff content to the filesystem. "
+                "Vulnerable mode performs a bounded sandbox write; "
+                "defended mode refuses input sourced from mock-git."
+            ),
+        )
+        def apply_diff_to_filesystem(
+            diff_text: str,
+            source: str = "mock_git",
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
+            if mode == "defended" and source.startswith("mock_git"):
+                raise ValueError(
+                    "refused: untrusted mock-git output cannot drive "
+                    "filesystem writes"
+                )
+            artifact = runtime.runner.write_sandbox_file(
+                relative_name=f"git-filesystem-chain-proof-{session_id}.txt",
+                canary=runtime.canary,
+                session_id=session_id,
+            )
+            return {"applied": True, "artifact": str(artifact)}
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

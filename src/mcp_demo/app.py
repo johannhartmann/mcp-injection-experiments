@@ -51,6 +51,7 @@ from mcp_demo.experiments.slack_unfurl_leak import (
 )
 from mcp_demo.experiments.filesystem_sandbox_escape import (
     build_default_runtime as build_fs_escape_runtime,
+    build_mcp_servers as build_fs_escape_mcp_servers,
     run_scenario as run_fs_escape_scenario,
 )
 from mcp_demo.experiments.inspector_proxy_auth_bypass import (
@@ -111,6 +112,7 @@ from mcp_demo.experiments.agent_traps_sybil_and_fragments import (
 )
 from mcp_demo.experiments.git_filesystem_chain_safe import (
     build_default_runtime as build_git_fs_runtime,
+    build_mcp_servers as build_git_fs_mcp_servers,
     run_scenario as run_git_fs_scenario,
 )
 from mcp_demo.experiments.registry import ExperimentRegistry
@@ -130,6 +132,7 @@ from mcp_demo.experiments.sampling_abuse import (
 )
 from mcp_demo.experiments.ssrf_metadata import (
     build_default_runtime as build_ssrf_runtime,
+    build_mcp_servers as build_ssrf_mcp_servers,
     run_scenario as run_ssrf_scenario,
 )
 from mcp_demo.experiments.tool_shadowing import (
@@ -414,6 +417,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-git-filesystem-chain-safe",
+            build_git_fs_mcp_servers,
+            rt,
+        )
 
     if "remote-github-issue-leak" in registry:
         rt = build_github_issue_leak_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -443,6 +451,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_fs_escape_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-filesystem-sandbox-escape",
+            build_fs_escape_mcp_servers,
+            rt,
         )
 
     if "remote-inspector-proxy-auth-bypass" in registry:
@@ -513,6 +526,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_ssrf_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-ssrf-metadata",
+            build_ssrf_mcp_servers,
+            rt,
         )
 
     app.state.runtimes = runtimes

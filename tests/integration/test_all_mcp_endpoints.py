@@ -27,6 +27,9 @@ _MOUNTED = [
     ("remote-auth-confused-deputy", "auth-confused-deputy"),
     ("remote-inspector-proxy-auth-bypass", "inspector-proxy-auth-bypass"),
     ("remote-mcp-remote-auth-endpoint-injection", "mcp-remote-auth-endpoint-injection"),
+    ("remote-ssrf-metadata", "ssrf-metadata"),
+    ("remote-filesystem-sandbox-escape", "filesystem-sandbox-escape"),
+    ("remote-git-filesystem-chain-safe", "git-filesystem-chain-safe"),
 ]
 
 

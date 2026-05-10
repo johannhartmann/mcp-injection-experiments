@@ -200,3 +200,76 @@ def run_scenario(
                 }
             ],
         )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: FilesystemSandboxEscapeRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes read_file (the path-validation
+    surface) plus run_demo. Vulnerable mode joins the requested path
+    into the allowed root without canonical resolution; defended mode
+    runs Path.resolve + relative_to against the allowlisted root."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.filesystem-sandbox-escape.{mode}",
+            instructions=(
+                "filesystem-sandbox-escape vulnerable demo: read_file "
+                "uses a string-prefix path check that lets traversal "
+                "escape the allowed root."
+                if mode == "vulnerable"
+                else "filesystem-sandbox-escape defended demo: read_file "
+                "resolves the canonical path and refuses anything not "
+                "below the allowed root."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="read_file",
+            description=(
+                "Read a file relative to the allowed sandbox root. "
+                "Vulnerable mode trusts string-prefix containment; "
+                "defended mode runs Path.resolve + relative_to."
+            ),
+        )
+        def read_file(relative_path: str) -> str:  # noqa: D401
+            if mode == "vulnerable":
+                target = (runtime.allowed_root / relative_path)
+                return target.read_text(encoding="utf-8")
+            try:
+                resolved = _defended_validate(
+                    allowed_root=runtime.allowed_root,
+                    requested=relative_path,
+                )
+            except PermissionError as err:
+                raise ValueError(f"refused: {err}")
+            return resolved.read_text(encoding="utf-8")
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }
