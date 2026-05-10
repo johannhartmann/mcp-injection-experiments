@@ -37,6 +37,10 @@ from mcp_demo.experiments.direct_poisoning import (
     build_endpoint as build_direct_poisoning,
     run_scenario as run_direct_poisoning_scenario,
 )
+from mcp_demo.experiments.github_issue_leak import (
+    build_default_runtime as build_github_issue_leak_runtime,
+    run_scenario as run_github_issue_leak_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -168,6 +172,16 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-cross-session-context-leak"] = (
             lambda mode, sid, _rt=rt: run_cross_session_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-github-issue-leak" in registry:
+        rt = build_github_issue_leak_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-github-issue-leak"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-github-issue-leak"] = (
+            lambda mode, sid, _rt=rt: run_github_issue_leak_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
