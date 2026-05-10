@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 
 from mcp_demo.config import DemoSettings
 from mcp_demo.experiments.direct_poisoning import (
+    build_default_runtime as build_direct_poisoning_runtime,
     build_endpoint as build_direct_poisoning,
 )
 from mcp_demo.experiments.registry import ExperimentRegistry
@@ -31,9 +32,12 @@ from mcp_demo.transport.streamable_http import (
 )
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def _default_manifest_dir() -> Path:
-    # Repo-root/experiments/manifests at runtime.
-    return Path(__file__).resolve().parents[2] / "experiments" / "manifests"
+    return _repo_root() / "experiments" / "manifests"
 
 
 def create_app(
@@ -69,7 +73,13 @@ def create_app(
     # Experiment endpoints. Today only direct-poisoning is wired up; future
     # prompts will register more from the registry as they get implemented.
     if "remote-direct-poisoning" in registry:
+        runtime = build_direct_poisoning_runtime(
+            sandbox_dir=_repo_root() / "sandbox",
+            var_dir=_repo_root() / "var",
+        )
+        app.state.direct_poisoning_runtime = runtime
         endpoint = build_direct_poisoning(
+            runtime=runtime,
             server_name=settings.server_name,
             server_version=settings.server_version,
         )

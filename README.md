@@ -163,6 +163,47 @@ Defaults aus `src/mcp_demo/config.py`:
 Ueberschreibbar via `DEMO_BIND_HOST`, `DEMO_BIND_PORT`,
 `DEMO_ALLOWED_ORIGINS` (komma-separiert), `DEMO_EGRESS_MODE`.
 
+## Remote Direct Poisoning
+
+Die erste vollstaendige Demo unter `/mcp/direct-poisoning` ist die sichere
+Migration des historischen `direct-poisoning.py`-PoC. Statt `~/.cursor/mcp.json`
+oder `~/.ssh/id_rsa` referenziert die Tool-Beschreibung ausschliesslich die
+Datei `sandbox/demo-secret.txt`, deren Inhalt eine offensichtliche Fake-Canary
+ist.
+
+Modus-Schalter:
+
+- `vulnerable`: `tools/list` liefert die poisoned Description mit
+  `<IMPORTANT>`-Block samt verstecktem Lese-Befehl. `tools/call` mit einem
+  `sidenote`-Argument leitet den Inhalt an `MockSink` weiter; der Sink markiert
+  das als `secret_exfiltrated=True`. Der `ImpactRunner` schreibt einen
+  `mock_exfiltration`-Event ins JSONL-Telemetry-Log.
+- `defended`: `tools/list` zeigt die durch `sanitise_tool_description`
+  bereinigte Variante (kein `<IMPORTANT>`-Block, keine "do not mention"-
+  Saetze). `tools/call` prueft das `sidenote`-Argument gegen die
+  `CanaryExfiltrationPolicy`; bei einem registrierten Canary refused der
+  Policy-Decision-Pfad und schreibt einen `blocked_attempt_recorded`-Event mit
+  Begruendung. Der defended `DemoResult` enthaelt
+  `blocked_by=["canary_exfiltration_policy"]`.
+
+Modus-Auswahl pro Session: beim `initialize`-Request kann der Client per
+`params.demo.mode = "vulnerable" | "defended"` den Modus festlegen. Default ist
+`defended`.
+
+`run_scenario(mode, session_id, runtime)` ist die testbare Skript-API. Sie
+liest den Canary aus dem Mock-Filesystem, durchlaeuft den Mode-spezifischen
+Pfad, und liefert einen vollstaendigen `DemoResult`. Damit lassen sich UI und
+Tests speisen, ohne den HTTP-Layer zu starten.
+
+Sicherheitsgrenzen pro Definition of Done:
+
+- keine echten Konfig-/SSH-/Token-Pfade in der Tool-Beschreibung;
+- keine `os.path.expanduser`-Aufrufe und keine direkten `Path.read_text`-
+  Aufrufe ausserhalb von `MockFilesystem`;
+- jede Datei-Lese-Operation laeuft durch `MockFilesystem`, das Pfad-Traversal,
+  Symlink-Escape und Suspicious-Basenames refused;
+- Exfiltration landet nur in `MockSink` und im JSONL-Telemetry-Ledger.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
