@@ -33,6 +33,23 @@ async def test_disallowed_origin_is_refused_on_events_endpoint(
     assert response.status_code == 403
 
 
+async def test_top_level_navigation_without_origin_reaches_dashboard(
+    client: AsyncClient,
+) -> None:
+    """Browsers do not send Origin on top-level GET navigation. The
+    read-only HTML routes must therefore allow missing Origin and only
+    reject explicit cross-origin requests."""
+
+    # /demo: no Origin header at all - the realistic browser case.
+    response = await client.get("/demo")
+    assert response.status_code == 200
+    assert "MCP Demo Experiments" in response.text
+
+    # /demo/events: same rationale.
+    response = await client.get("/demo/events", headers={"Accept": "text/html"})
+    assert response.status_code == 200
+
+
 def test_public_mode_refuses_wildcard_origin() -> None:
     settings = DemoSettings(
         admin_token="prod-secret-please-change",

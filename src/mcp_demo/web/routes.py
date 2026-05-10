@@ -255,12 +255,15 @@ def build_demo_router(
     @router.get("")
     @router.get("/")
     async def index(request: Request) -> Response:
-        if not _origin_ok(request):
+        # Browsers do not send an Origin header for top-level navigation
+        # GETs, so a strict ``not _origin_ok`` would lock real users out
+        # of the dashboard. The CSRF risk only applies to state-changing
+        # requests (POST /scenario, POST /reset) which keep the strict
+        # check below. For the read-only HTML view we reject only when
+        # the request explicitly comes from an Origin that is not in
+        # the allowlist (the genuinely cross-origin case).
+        if request.headers.get("origin") and not _origin_ok(request):
             return _forbidden("origin not allowlisted")
-        # Build the canonical base URL the user is actually browsing
-        # against so the per-card "Open in Inspector" URLs are
-        # copy-pasteable verbatim. We trust the Origin header here
-        # because we already required it to be allowlisted.
         base_url = request.headers.get("origin") or str(request.base_url).rstrip("/")
         return HTMLResponse(_render_index(registry, base_url=base_url))
 
@@ -287,7 +290,10 @@ def build_demo_router(
 
     @router.get("/events")
     async def list_events(request: Request) -> Response:
-        if not _origin_ok(request):
+        # Same rationale as the index handler: top-level navigation
+        # carries no Origin header. Reject only when Origin is set and
+        # mismatches the allowlist.
+        if request.headers.get("origin") and not _origin_ok(request):
             return _forbidden("origin not allowlisted")
         session_id = request.query_params.get("session_id")
         experiment = request.query_params.get("experiment")
