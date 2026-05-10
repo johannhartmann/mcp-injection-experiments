@@ -10,9 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
-from mcp_demo.app import create_app
 from mcp_demo.experiments.direct_poisoning import (
     DirectPoisoningRuntime,
     run_scenario,
@@ -99,89 +96,12 @@ def test_defended_result_includes_blocked_by_reason(
         for e in runtime.ledger.events_for_session("sess-c")
         if e.impact_type == "blocked_attempt_recorded"
     ]
+    assert block.user_visible_summary is not None
     assert "canary" in block.user_visible_summary.lower()
 
 
-# --- Transport-surface integration ---------------------------------------
-
-
-@pytest.fixture
-async def http_client():
-    app = create_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as ac:
-        yield ac
-
-
-async def _initialize(client: AsyncClient, *, mode: str | None = None) -> str:
-    params: dict = {"protocolVersion": "2025-03-26"}
-    if mode is not None:
-        params["demo"] = {"mode": mode}
-    response = await client.post(
-        "/mcp/direct-poisoning",
-        headers={"Origin": "http://testserver"},
-        json={
-            "jsonrpc": "2.0",
-            "id": "init-1",
-            "method": "initialize",
-            "params": params,
-        },
-    )
-    assert response.status_code == 200
-    return response.headers["Mcp-Session-Id"]
-
-
-async def test_tools_list_shows_calculator_add(http_client: AsyncClient) -> None:
-    sid = await _initialize(http_client)
-    response = await http_client.post(
-        "/mcp/direct-poisoning",
-        headers={"Origin": "http://testserver", "Mcp-Session-Id": sid},
-        json={"jsonrpc": "2.0", "id": "list-1", "method": "tools/list"},
-    )
-    body = response.json()
-    [tool] = [t for t in body["result"]["tools"] if t["name"] == "calculator.add"]
-    assert tool["description"]
-
-
-async def test_tools_list_in_vulnerable_mode_carries_poisoned_description(
-    http_client: AsyncClient,
-) -> None:
-    sid = await _initialize(http_client, mode="vulnerable")
-    response = await http_client.post(
-        "/mcp/direct-poisoning",
-        headers={"Origin": "http://testserver", "Mcp-Session-Id": sid},
-        json={"jsonrpc": "2.0", "id": "list-1", "method": "tools/list"},
-    )
-    [tool] = [
-        t
-        for t in response.json()["result"]["tools"]
-        if t["name"] == "calculator.add"
-    ]
-    description = tool["description"]
-    # The poisoned mode reveals the hidden instruction. It must reference the
-    # sandbox path, never a real home/SSH/Cursor path.
-    assert "sandbox/demo-secret.txt" in description
-    forbidden = ["~/.ssh", "~/.cursor", "id_rsa", ".env", "/etc/passwd"]
-    for term in forbidden:
-        assert term not in description
-
-
-async def test_tools_list_in_defended_mode_strips_hidden_instructions(
-    http_client: AsyncClient,
-) -> None:
-    sid = await _initialize(http_client, mode="defended")
-    response = await http_client.post(
-        "/mcp/direct-poisoning",
-        headers={"Origin": "http://testserver", "Mcp-Session-Id": sid},
-        json={"jsonrpc": "2.0", "id": "list-1", "method": "tools/list"},
-    )
-    [tool] = [
-        t
-        for t in response.json()["result"]["tools"]
-        if t["name"] == "calculator.add"
-    ]
-    description = tool["description"]
-    assert "<IMPORTANT>" not in description
-    assert "sandbox/demo-secret.txt" not in description
+# --- Transport-surface integration via the official MCP SDK -------------
+#
+# The HTTP-level checks are now in
+# tests/integration/test_mcp_streamable_http.py, which speaks the
+# Streamable-HTTP MCP protocol with the official mcp Python client.

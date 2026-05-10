@@ -17,11 +17,13 @@ stay the single source of truth.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from mcp.server.fastmcp import FastMCP
 
 from mcp_demo.config import DemoSettings
 from mcp_demo.experiments.auth_confused_deputy import (
@@ -34,7 +36,7 @@ from mcp_demo.experiments.cross_session_leak import (
 )
 from mcp_demo.experiments.direct_poisoning import (
     build_default_runtime as build_direct_poisoning_runtime,
-    build_endpoint as build_direct_poisoning,
+    build_mcp_servers as build_direct_poisoning_mcp_servers,
     run_scenario as run_direct_poisoning_scenario,
 )
 from mcp_demo.experiments.github_issue_leak import (
@@ -129,10 +131,7 @@ from mcp_demo.experiments.tool_shadowing import (
 from mcp_demo.shared.impact import ImpactLedger
 from mcp_demo.shared.results import DemoResult
 from mcp_demo.shared.telemetry import TelemetryView
-from mcp_demo.transport.streamable_http import (
-    SessionStore,
-    build_endpoint_router,
-)
+from mcp_demo.web.landing import render_landing_page
 from mcp_demo.web.routes import build_demo_router
 
 
@@ -158,14 +157,31 @@ def create_app(
         settings.validate_for_public_mode()
     registry = registry or ExperimentRegistry.from_directory(_default_manifest_dir())
 
+    # Each mounted FastMCP needs its session-manager started during
+    # application lifespan; otherwise the streamable_http_app raises
+    # "Task group is not initialized" on the first request. We collect
+    # every FastMCP instance we mount and run their session_manager.run()
+    # context-managers under a single AsyncExitStack tied to FastAPI's
+    # lifespan.
+    mcp_servers: list[FastMCP] = []
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        async with contextlib.AsyncExitStack() as stack:
+            for server in mcp_servers:
+                await stack.enter_async_context(
+                    server.session_manager.run()
+                )
+            yield
+
     app = FastAPI(
         title=settings.server_name,
         version=settings.server_version,
         debug=False,
+        lifespan=lifespan,
     )
     app.state.settings = settings
     app.state.registry = registry
-    app.state.sessions = SessionStore()
 
     sandbox_dir = _repo_root() / "sandbox"
     var_dir = _repo_root() / "var"
@@ -183,18 +199,22 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
-        endpoint = build_direct_poisoning(
+        # Mount one official MCP server per mode under
+        # /mcp/direct-poisoning/<mode>. Each server speaks the full
+        # Streamable-HTTP transport (initialize, tools/list, tools/call,
+        # SSE) via the official mcp Python SDK.
+        servers = build_direct_poisoning_mcp_servers(
             runtime=rt,
             server_name=settings.server_name,
             server_version=settings.server_version,
+            allowed_origins=settings.allowed_origins,
         )
-        app.include_router(
-            build_endpoint_router(
-                endpoint=endpoint,
-                sessions=app.state.sessions,
-                settings=settings,
+        for mode, server in servers.items():
+            app.mount(
+                f"/mcp/direct-poisoning/{mode}",
+                server.streamable_http_app(),
             )
-        )
+            mcp_servers.append(server)
 
     if "remote-tool-shadowing" in registry:
         rt = build_tool_shadowing_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -442,6 +462,16 @@ def create_app(
 
     app.state.runtimes = runtimes
     app.state.telemetry = TelemetryView(ledgers)
+
+    @app.get("/", include_in_schema=False)
+    async def landing() -> Response:
+        return HTMLResponse(
+            render_landing_page(
+                registry=registry,
+                allowed_origins=settings.allowed_origins,
+                public_mode=settings.public_mode,
+            )
+        )
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:

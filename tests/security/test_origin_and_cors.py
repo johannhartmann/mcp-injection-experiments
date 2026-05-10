@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-from httpx import ASGITransport, AsyncClient
-
+from httpx import AsyncClient
 from mcp_demo.app import create_app
+
+import pytest
+
 from mcp_demo.config import DemoSettings
 
 
-@pytest.fixture
-async def client():
-    app = create_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as ac:
-        yield ac
 
 
 async def test_disallowed_origin_is_refused_on_demo_endpoints(
@@ -58,29 +51,30 @@ def test_public_mode_refuses_empty_allowlist() -> None:
         create_app(settings=settings.with_public_mode())
 
 
-async def test_origin_check_does_not_trust_session_id_alone(
+async def test_mcp_endpoint_refuses_disallowed_origin(
     client: AsyncClient,
 ) -> None:
-    """Even with a known Mcp-Session-Id, a wrong Origin is refused."""
+    """The official MCP servers mounted under /mcp/<id>/<mode> enforce
+    transport-security origin checks via FastMCP's TransportSecuritySettings.
+    A request with a fremder Origin is refused with HTTP 4xx before the
+    JSON-RPC layer sees it."""
 
-    init = await client.post(
-        "/mcp/direct-poisoning",
-        headers={"Origin": "http://testserver"},
+    response = await client.post(
+        "/mcp/direct-poisoning/vulnerable/",
+        headers={
+            "Origin": "https://evil.example",
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+        },
         json={
             "jsonrpc": "2.0",
             "id": "init",
             "method": "initialize",
-            "params": {"protocolVersion": "2025-03-26"},
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "demo-client", "version": "0.0.1"},
+            },
         },
     )
-    sid = init.headers["Mcp-Session-Id"]
-
-    follow_up = await client.post(
-        "/mcp/direct-poisoning",
-        headers={
-            "Origin": "https://evil.example",
-            "Mcp-Session-Id": sid,
-        },
-        json={"jsonrpc": "2.0", "id": "x", "method": "tools/list"},
-    )
-    assert follow_up.status_code == 403
+    assert response.status_code in {400, 403, 421}

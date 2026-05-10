@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-from httpx import ASGITransport, AsyncClient
-
+from httpx import AsyncClient
 from mcp_demo.app import create_app
+
+import pytest
+
 from mcp_demo.config import DemoSettings
 
 
-@pytest.fixture
-async def client():
-    app = create_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as ac:
-        yield ac
 
 
 async def test_reset_endpoint_requires_admin_token(client: AsyncClient) -> None:

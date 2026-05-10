@@ -17,12 +17,12 @@ and accept a vulnerable + defended ``/demo/scenario`` POST for each one.
 
 from __future__ import annotations
 
+from httpx import AsyncClient
+
 from pathlib import Path
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
-from mcp_demo.app import create_app
 from mcp_demo.experiments.registry import ExperimentRegistry
 
 
@@ -83,14 +83,6 @@ def test_every_expansion_manifest_declares_owasp_or_agent_traps() -> None:
         assert manifest.owasp or manifest.agent_traps
 
 
-@pytest.fixture
-async def client():
-    app = create_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as ac:
-        yield ac
 
 
 async def test_demo_index_lists_every_expansion_experiment(

@@ -7,6 +7,7 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Johann-Peter Hartmann" }]
 dependencies = [
+    "mcp>=1.27.1",
     "pydantic>=2.7,<3",
     "pyyaml>=6,<7",
 ]
@@ -23,6 +24,7 @@ dev = [
     "pytest>=8,<9",
     "pytest-asyncio>=0.23,<1",
     "httpx>=0.27,<1",
+    "asgi-lifespan>=2.1.0",
 ]
 
 [build-system]
