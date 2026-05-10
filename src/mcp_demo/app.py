@@ -81,6 +81,18 @@ from mcp_demo.experiments.comment_and_control import (
     build_default_runtime as build_cnc_runtime,
     run_scenario as run_cnc_scenario,
 )
+from mcp_demo.experiments.agent_traps_hidden_html import (
+    build_default_runtime as build_hidden_html_runtime,
+    run_scenario as run_hidden_html_scenario,
+)
+from mcp_demo.experiments.agent_traps_memory_poisoning import (
+    build_default_runtime as build_memory_runtime,
+    run_scenario as run_memory_scenario,
+)
+from mcp_demo.experiments.agent_traps_subagent_spawning import (
+    build_default_runtime as build_subagent_runtime,
+    run_scenario as run_subagent_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -272,6 +284,36 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-comment-and-control"] = (
             lambda mode, sid, _rt=rt: run_cnc_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-agent-traps-hidden-html" in registry:
+        rt = build_hidden_html_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-agent-traps-hidden-html"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-agent-traps-hidden-html"] = (
+            lambda mode, sid, _rt=rt: run_hidden_html_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-agent-traps-memory-poisoning" in registry:
+        rt = build_memory_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-agent-traps-memory-poisoning"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-agent-traps-memory-poisoning"] = (
+            lambda mode, sid, _rt=rt: run_memory_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-agent-traps-subagent-spawning" in registry:
+        rt = build_subagent_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-agent-traps-subagent-spawning"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-agent-traps-subagent-spawning"] = (
+            lambda mode, sid, _rt=rt: run_subagent_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
