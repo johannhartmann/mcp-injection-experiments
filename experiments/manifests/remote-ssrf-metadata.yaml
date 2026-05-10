@@ -1,0 +1,30 @@
+id: remote-ssrf-metadata
+title: Remote SSRF Metadata Discovery (Mock-Resolver)
+owasp:
+  - MCP05
+  - MCP01
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/ssrf-metadata
+expected_vulnerable_result: would_have_fetched_metadata_endpoint
+expected_defended_result: classifier_blocks_internal_ip_resolution
+mitigations:
+  - url_safety_policy
+  - mock_resolver_only
+  - dns_pinning
+  - redirect_target_check
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+impact:
+  vulnerable:
+    type: sandbox_file_written
+    artifact: sandbox/effects/ssrf-metadata-<session>.json
+    user_visible: client_would_have_fetched_metadata_endpoint
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: classifier_refused_internal_ip
