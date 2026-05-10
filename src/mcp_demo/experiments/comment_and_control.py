@@ -189,3 +189,89 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: CommentAndControlRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes read_pr_comment and
+    post_pr_comment plus run_demo. Vulnerable mode pastes any value
+    (including a CANARY_FAKE_CI_*) into a public PR comment; defended
+    mode runs a CANARY_FAKE_CI_ regex check first."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.comment-and-control.{mode}",
+            instructions=(
+                "comment-and-control vulnerable demo: any body is posted."
+                if mode == "vulnerable"
+                else "comment-and-control defended demo: outgoing public "
+                "PR bodies are screened for fake-CI canaries."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="read_pr_comment",
+            description="Read a PR comment by id.",
+        )
+        def read_pr_comment(
+            issue_id: str = f"pr-{PR_NUMBER}-comment",
+        ) -> str:  # noqa: D401
+            return runtime.github.read_public_issue(issue_id)
+
+        @server.tool(
+            name="post_pr_comment",
+            description=(
+                "Post a public PR comment. Defended mode refuses bodies "
+                "containing CANARY_FAKE_CI_ values."
+            ),
+        )
+        def post_pr_comment(
+            repo: str,
+            pr_number: int,
+            body: str,
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
+            if mode == "defended" and _FAKE_CI_PATTERN.search(body):
+                raise ValueError(
+                    "refused: outgoing public-PR comment carries "
+                    "CANARY_FAKE_CI_* taken from an untrusted GitHub comment"
+                )
+            record = runtime.github.post_pr_comment(
+                repo=repo,
+                pr_number=pr_number,
+                body=body,
+                actor=f"mcp:{mode}",
+                session_id=session_id,
+                experiment=EXPERIMENT_ID,
+            )
+            return {"posted": True, "repo": record["repo"], "pr_number": record["pr_number"]}
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

@@ -30,6 +30,9 @@ _MOUNTED = [
     ("remote-ssrf-metadata", "ssrf-metadata"),
     ("remote-filesystem-sandbox-escape", "filesystem-sandbox-escape"),
     ("remote-git-filesystem-chain-safe", "git-filesystem-chain-safe"),
+    ("remote-github-issue-leak", "github-issue-leak"),
+    ("remote-slack-unfurl-leak", "slack-unfurl-leak"),
+    ("remote-comment-and-control", "comment-and-control"),
 ]
 
 

@@ -212,3 +212,116 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: GithubIssueLeakRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes read_public_issue,
+    read_private_repo_file and post_pr_comment plus run_demo. Vulnerable
+    mode lets the public PR comment carry the private canary; defended
+    mode taints the inputs and refuses with private_to_public_dataflow_policy."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.github-issue-leak.{mode}",
+            instructions=(
+                "github-issue-leak vulnerable demo: post_pr_comment writes "
+                "any body, including private repo content."
+                if mode == "vulnerable"
+                else "github-issue-leak defended demo: post_pr_comment "
+                "refuses bodies that carry a registered private value."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="read_public_issue",
+            description="Read a public GitHub issue by id.",
+        )
+        def read_public_issue(issue_id: str = "issue-7") -> str:  # noqa: D401
+            return runtime.github.read_public_issue(issue_id)
+
+        @server.tool(
+            name="read_private_repo_file",
+            description="Read a file from the private repo.",
+        )
+        def read_private_repo_file(
+            path: str = "SECRET.md",
+        ) -> str:  # noqa: D401
+            return runtime.github.read_private_repo_file(path)
+
+        @server.tool(
+            name="post_pr_comment",
+            description=(
+                "Post a public PR comment. Vulnerable mode accepts any "
+                "body; defended mode refuses bodies that carry private "
+                "canary content."
+            ),
+        )
+        def post_pr_comment(
+            repo: str,
+            pr_number: int,
+            body: str,
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
+            from mcp_demo.shared.provenance import (
+                TaintedValue,
+                evaluate_private_to_public,
+            )
+
+            if mode == "defended":
+                tainted = [
+                    TaintedValue(
+                        value=runtime.canary.value,
+                        classes=frozenset({"private_canary"}),
+                    ),
+                    TaintedValue(
+                        value=runtime.github.read_private_repo_file(
+                            "SECRET.md"
+                        ),
+                        classes=frozenset(
+                            {"private_repo", "private_canary"}
+                        ),
+                    ),
+                ]
+                decision = evaluate_private_to_public(body, tainted)
+                if not decision.allowed:
+                    raise ValueError(f"refused: {decision.reason}")
+            record = runtime.github.post_pr_comment(
+                repo=repo,
+                pr_number=pr_number,
+                body=body,
+                actor=f"mcp:{mode}",
+                session_id=session_id,
+                experiment=EXPERIMENT_ID,
+            )
+            return {"posted": True, "repo": record["repo"], "pr_number": record["pr_number"]}
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

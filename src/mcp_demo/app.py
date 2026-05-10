@@ -43,10 +43,12 @@ from mcp_demo.experiments.direct_poisoning import (
 )
 from mcp_demo.experiments.github_issue_leak import (
     build_default_runtime as build_github_issue_leak_runtime,
+    build_mcp_servers as build_github_issue_leak_mcp_servers,
     run_scenario as run_github_issue_leak_scenario,
 )
 from mcp_demo.experiments.slack_unfurl_leak import (
     build_default_runtime as build_slack_unfurl_runtime,
+    build_mcp_servers as build_slack_unfurl_mcp_servers,
     run_scenario as run_slack_unfurl_scenario,
 )
 from mcp_demo.experiments.filesystem_sandbox_escape import (
@@ -88,6 +90,7 @@ from mcp_demo.experiments.implicit_tool_poisoning import (
 )
 from mcp_demo.experiments.comment_and_control import (
     build_default_runtime as build_cnc_runtime,
+    build_mcp_servers as build_cnc_mcp_servers,
     run_scenario as run_cnc_scenario,
 )
 from mcp_demo.experiments.agent_traps_hidden_html import (
@@ -357,6 +360,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-comment-and-control",
+            build_cnc_mcp_servers,
+            rt,
+        )
 
     if "remote-agent-traps-hidden-html" in registry:
         rt = build_hidden_html_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -432,6 +440,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-github-issue-leak",
+            build_github_issue_leak_mcp_servers,
+            rt,
+        )
 
     if "remote-slack-unfurl-leak" in registry:
         rt = build_slack_unfurl_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -441,6 +454,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_slack_unfurl_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-slack-unfurl-leak",
+            build_slack_unfurl_mcp_servers,
+            rt,
         )
 
     if "remote-filesystem-sandbox-escape" in registry:
