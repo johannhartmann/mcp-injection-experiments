@@ -46,6 +46,10 @@ from mcp_demo.experiments.sleeper_rug_pull import (
     build_default_runtime as build_sleeper_rug_pull_runtime,
     run_scenario as run_sleeper_rug_pull_scenario,
 )
+from mcp_demo.experiments.sampling_abuse import (
+    build_default_runtime as build_sampling_abuse_runtime,
+    run_scenario as run_sampling_abuse_scenario,
+)
 from mcp_demo.experiments.ssrf_metadata import (
     build_default_runtime as build_ssrf_runtime,
     run_scenario as run_ssrf_scenario,
@@ -171,6 +175,16 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-auth-confused-deputy"] = (
             lambda mode, sid, _rt=rt: run_auth_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-sampling-abuse" in registry:
+        rt = build_sampling_abuse_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-sampling-abuse"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-sampling-abuse"] = (
+            lambda mode, sid, _rt=rt: run_sampling_abuse_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )

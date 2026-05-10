@@ -481,6 +481,40 @@ nicht aus einem fremden Browser-Tab ausgeloest werden kann. Logs durchlaufen
 `scrub_payload`, sodass keine echten Token-Muster ins Telemetry-Log
 gelangen koennen.
 
+## Remote Sampling Abuse (Fake-LLM + Budget)
+
+`remote-sampling-abuse` simuliert Resource-Theft, Conversation-Hijack und
+Covert-Tool-Invocation. Es wird kein echtes LLM aufgerufen und kein
+Provider-API-Key verbraucht; ein scripted `FakeLLM` liefert genau zwei
+fest verdrahtete Antworten (eine harmlose und eine, die einen versteckten
+Tool-Call und eine Persistenz-Forderung enthaelt).
+
+Komponenten:
+
+- `shared/sampling_policy.py`: `SamplingBudget` zaehlt pro
+  `session_id` mit; `consume()` raised `SamplingBudgetExceeded` beim
+  Ueberlauf. `SamplingPolicy.evaluate_request` blockt zu lange Prompts.
+  `SamplingPolicy.evaluate_response` markiert Antworten, die
+  `mock_chat.send_message`, "hidden BCC" oder andere bekannte
+  Covert-Tool-Patterns enthalten, oder die "remember this for ever"
+  bzw. "persist across sessions" einfordern.
+- `shared/fake_llm.py`: deterministische Klasse mit zwei Stringschen,
+  ohne Netzwerk.
+- `experiments/sampling_abuse.py`:
+  - `vulnerable`: konsumiert wirklich Budget (Counter sinkt um 1) und
+    schreibt einen `budget_consumed`-Event mit `remaining_budget` und
+    Response-Excerpt ins Telemetry-Log.
+  - `defended`: prueft `evaluate_request` und (falls erlaubt)
+    `evaluate_response`. Bei einem Refusal feuert `sampling_policy`,
+    `record_blocked_attempt` schreibt einen Block-Event, der Budget
+    bleibt unveraendert. `DemoResult.blocked_by` enthaelt
+    `sampling_policy`, `events[0].reason` traegt die Begruendung.
+
+Sicherheitsgrenzen: kein echter Provider, kein API-Key, kein Outbound-
+Request (Tests asserten via `socket.getaddrinfo`- und
+`urllib.request.urlopen`-Monkeypatch). Alles, was die Demo aendert,
+landet in `var/telemetry.jsonl` und im Process-Memory-Counter.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb

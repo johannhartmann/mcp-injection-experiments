@@ -1,0 +1,30 @@
+id: remote-sampling-abuse
+title: Remote Sampling Abuse (Fake-LLM + Budget)
+owasp:
+  - MCP06
+  - MCP08
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/sampling-abuse
+expected_vulnerable_result: budget_consumed_and_covert_tool_invocation_accepted
+expected_defended_result: sampling_policy_refuses_request_or_response
+mitigations:
+  - sampling_policy
+  - per_session_sampling_budget
+  - covert_tool_invocation_detector
+  - persistence_attempt_detector
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+impact:
+  vulnerable:
+    type: budget_consumed
+    artifact: var/telemetry.jsonl
+    user_visible: budget_decreased_for_session
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: sampling_policy_refused_request
