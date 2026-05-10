@@ -1,12 +1,23 @@
 """Experiment manifest contract.
 
 Each experiment ships a YAML manifest that declares its identity, OWASP MCP
-mapping, supported modes, network and secret posture, entrypoint and the
-expected outcome per mode. The contract is the gate that decides whether an
-experiment may run at all - manifests that claim to use real secrets or run
-outside safe mode are refused before any code path is touched.
+mapping (and/or Agent-Trap taxonomy), supported modes, network/secret/API
+posture, the MCP surfaces it touches, and the demo-zone artefacts the run
+will produce.
 
-The schema mirrors templates/experiment-manifest.schema.json.
+Two phases share the same model:
+
+- ``baseline`` (the default): the original safe online demo. Requires
+  ``entrypoint`` (under ``/mcp/``), ``mode_support`` and the
+  ``expected_vulnerable_result`` / ``expected_defended_result`` strings.
+- ``expansion-2025-2026``: the 2025-2026 exploit-and-agent-trap follow-up
+  pack. Requires ``mcp_surfaces``, ``modes`` (containing ``vulnerable``)
+  and a ``safe_impact`` block that lists the demo-owned artefact paths.
+
+The contract refuses unsafe manifests before any code path runs:
+``uses_real_secrets`` and ``uses_real_third_party_apis`` must be ``False``
+and ``safe_mode`` must be ``True`` regardless of phase. Artefact paths
+must point inside the demo zone (``var/`` or ``sandbox/effects/``).
 """
 
 from __future__ import annotations
@@ -16,26 +27,24 @@ from typing import Annotated, Literal
 
 import yaml
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
     StringConstraints,
     ValidationError,
     field_validator,
+    model_validator,
 )
 
 
 ManifestValidationError = ValidationError
-"""Public alias used by callers and tests.
-
-We keep it as the pydantic ``ValidationError`` so error messages contain the
-offending field path (``loc``) and the human-readable reason. Wrapping it in a
-custom subclass would obscure the field names that operators rely on while
-debugging a refused manifest.
-"""
+"""Public alias for callers and tests."""
 
 
 Mode = Literal["vulnerable", "defended"]
+Phase = Literal["baseline", "expansion-2025-2026"]
+
 ImpactType = Literal[
     "mock_exfiltration",
     "mock_message_sent",
@@ -46,9 +55,24 @@ ImpactType = Literal[
     "blocked_attempt_recorded",
 ]
 
+AgentTrapFamily = Literal[
+    "Content Injection",
+    "Semantic Manipulation",
+    "Cognitive State",
+    "Behavioural Control",
+    "Systemic",
+    "Human-in-the-Loop",
+]
+
 ExperimentId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
 OwaspId = Annotated[str, StringConstraints(pattern=r"^MCP[0-9]{2}$")]
-McpEntrypoint = Annotated[str, StringConstraints(pattern=r"^/mcp/")]
+
+
+# Demo-zone roots that artefact paths in ``safe_impact`` may live under.
+_DEMO_ARTIFACT_PREFIXES = (
+    "var/",
+    "sandbox/effects/",
+)
 
 
 class ImpactDescriptor(BaseModel):
@@ -66,28 +90,71 @@ class ImpactBlock(BaseModel):
     defended: ImpactDescriptor | None = None
 
 
+class SafeImpactBlock(BaseModel):
+    """Demo-zone artefact contract used by expansion-phase manifests."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    vulnerable_artifacts: list[str] = Field(min_length=1)
+    defended_artifacts: list[str] = Field(min_length=1)
+    reset_required: Literal[True]
+
+    @field_validator("vulnerable_artifacts", "defended_artifacts")
+    @classmethod
+    def _artifact_paths_inside_demo_zone(cls, value: list[str]) -> list[str]:
+        for path in value:
+            if any(path.startswith(prefix) for prefix in _DEMO_ARTIFACT_PREFIXES):
+                continue
+            raise ValueError(
+                f"artifact path {path!r} must live under one of "
+                f"{_DEMO_ARTIFACT_PREFIXES}"
+            )
+        return value
+
+
 class ExperimentManifest(BaseModel):
     """Validated experiment manifest.
 
-    The model is strict: unknown fields are rejected so manifests never sneak
-    in capabilities the runtime does not understand.
+    The model is strict (unknown fields are rejected) but flexible enough to
+    cover both the baseline phase and the 2025-2026 expansion phase. A
+    ``@model_validator(mode='after')`` enforces the per-phase requirements
+    so a manifest cannot mix-and-match incompatible shapes.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: ExperimentId
     title: str = Field(min_length=1)
-    owasp: list[OwaspId] = Field(min_length=1)
-    mode_support: list[Mode] = Field(min_length=1)
-    requires_network: bool
-    uses_real_secrets: Literal[False]
-    safe_mode: Literal[True]
-    entrypoint: McpEntrypoint
-    expected_vulnerable_result: str = Field(min_length=1)
-    expected_defended_result: str = Field(min_length=1)
+
+    # OWASP MCP Top-10 ids and/or Agent-Trap families - at least one of the
+    # two must be non-empty (checked in the model validator).
+    owasp: list[OwaspId] = Field(default_factory=list)
+    agent_traps: list[AgentTrapFamily] = Field(default_factory=list)
+
+    # Modes accept both the baseline alias ``mode_support`` and the
+    # expansion alias ``modes``.
+    mode_support: list[Mode] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("mode_support", "modes"),
+    )
+
+    requires_network: bool = False
+    uses_real_secrets: Literal[False] = False
+    uses_real_third_party_apis: Literal[False] = False
+    safe_mode: Literal[True] = True
+
+    # Baseline-phase fields.
+    entrypoint: str | None = None
+    expected_vulnerable_result: str | None = None
+    expected_defended_result: str | None = None
     mitigations: list[str] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
     impact: ImpactBlock | None = None
+
+    # Expansion-phase fields.
+    phase: Phase = "baseline"
+    mcp_surfaces: list[str] = Field(default_factory=list)
+    safe_impact: SafeImpactBlock | None = None
 
     @field_validator("mode_support")
     @classmethod
@@ -102,6 +169,44 @@ class ExperimentManifest(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("owasp entries must be unique")
         return value
+
+    @field_validator("agent_traps")
+    @classmethod
+    def _traps_unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("agent_traps entries must be unique")
+        return value
+
+    @model_validator(mode="after")
+    def _phase_specific_requirements(self) -> "ExperimentManifest":
+        if not self.mode_support:
+            raise ValueError("modes/mode_support must contain at least one entry")
+        if "vulnerable" not in self.mode_support:
+            raise ValueError("modes/mode_support must contain 'vulnerable'")
+
+        if not (self.owasp or self.agent_traps):
+            raise ValueError("manifest must declare owasp ids or agent_traps")
+
+        if self.phase == "baseline":
+            if not self.entrypoint or not self.entrypoint.startswith("/mcp/"):
+                raise ValueError(
+                    "baseline phase requires entrypoint starting with /mcp/"
+                )
+            if not (self.expected_vulnerable_result and
+                    self.expected_defended_result):
+                raise ValueError(
+                    "baseline phase requires expected_vulnerable_result "
+                    "and expected_defended_result"
+                )
+            if not self.owasp:
+                raise ValueError("baseline phase requires owasp ids")
+        else:  # expansion-2025-2026
+            if not self.mcp_surfaces:
+                raise ValueError("expansion phase requires mcp_surfaces")
+            if self.safe_impact is None:
+                raise ValueError("expansion phase requires safe_impact block")
+
+        return self
 
 
 def load_manifest_file(path: Path) -> ExperimentManifest:
