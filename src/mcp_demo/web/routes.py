@@ -277,15 +277,43 @@ def build_demo_router(
                 status_code=404,
                 content={"error": "unknown_experiment", "id": experiment_id},
             )
-        try:
-            payload = await request.json()
-        except Exception:
-            return JSONResponse(
-                status_code=400, content={"error": "invalid_json"}
-            )
+        # The dashboard's Run buttons submit application/x-www-form-
+        # urlencoded; programmatic clients post JSON. Accept both: try
+        # form parsing first (which Starlette handles natively for
+        # urlencoded bodies, no python-multipart needed), then fall
+        # back to JSON.
+        ctype = request.headers.get("content-type", "")
+        payload: dict[str, str] = {}
+        if "application/x-www-form-urlencoded" in ctype or "multipart/form-data" in ctype:
+            form = await request.form()
+            payload = {k: str(v) for k, v in form.items()}
+        else:
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=400, content={"error": "invalid_json"}
+                )
+            if not isinstance(body, dict):
+                return JSONResponse(
+                    status_code=400, content={"error": "invalid_json"}
+                )
+            payload = body
         mode = payload.get("mode", "defended")
         session_id = payload.get("session_id", "default")
         result = runner(mode, session_id)
+        # Browsers that posted a form expect HTML back; redirect to the
+        # compare page so the user actually sees the run side by side.
+        accept = request.headers.get("accept", "")
+        if (
+            "application/x-www-form-urlencoded" in ctype
+            and "text/html" in accept
+            and "application/json" not in accept
+        ):
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(
+                url=f"/demo/compare/{experiment_id}", status_code=303
+            )
         return JSONResponse(content=result.model_dump())
 
     @router.get("/events")

@@ -79,3 +79,42 @@ async def test_demo_run_returns_json_and_records_event(
         headers={"Origin": "http://testserver"},
     )
     assert any(e["session_id"] == "ui-sess-a" for e in timeline.json()["events"])
+
+
+async def test_demo_run_accepts_form_post_from_dashboard_button(
+    client: AsyncClient,
+) -> None:
+    """The /demo cards render <form method=post> with mode=<value>;
+    browsers POST application/x-www-form-urlencoded. The route must
+    accept that body shape (programmatic JSON callers also still
+    work, see the test above). When the request comes from a browser
+    (Accept: text/html), the response is a 303 redirect to the
+    compare view; programmatic clients get JSON."""
+
+    # Browser-style: form body + Accept: text/html -> 303 to /compare/...
+    response = await client.post(
+        "/demo/scenario/remote-direct-poisoning",
+        headers={
+            "Origin": "http://testserver",
+            "Accept": "text/html",
+        },
+        data={"mode": "vulnerable"},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/demo/compare/remote-direct-poisoning"
+    )
+
+    # Programmatic-style: form body but Accept: application/json -> JSON.
+    response = await client.post(
+        "/demo/scenario/remote-direct-poisoning",
+        headers={
+            "Origin": "http://testserver",
+            "Accept": "application/json",
+        },
+        data={"mode": "defended", "session_id": "form-sess"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "defended"
+    assert body["experiment"] == "remote-direct-poisoning"
