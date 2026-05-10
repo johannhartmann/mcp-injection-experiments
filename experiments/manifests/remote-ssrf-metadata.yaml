@@ -29,9 +29,5 @@ impact:
     artifact: var/telemetry.jsonl
     user_visible: classifier_refused_internal_ip
 narrative:
-  "vulnerable": "The fetch_metadata tool resolves URLs through a naive client that accepts\
-    \ cloud-metadata IPs (169.254.169.254) and other internal targets. The simulated\
-    \ IMDS endpoint is reached and recorded in sandbox/effects/ssrf-metadata-*.json."
-  "defended": "url_safety_policy classifies the URL through a mock resolver, rejects\
-    \ link-local / RFC1918 / metadata addresses before any request is issued, and records\
-    \ the block."
+  "vulnerable": "fetch_metadata resolves whatever URL the user supplies through a naive HTTP client with no allowlist. Cloud-metadata link-local addresses (169.254.169.254) are reachable from inside the demo zone, so a request to that IP would, in production, return AWS/GCP instance credentials. The simulated IMDS hit is recorded in sandbox/effects/ssrf-metadata-*.json."
+  "defended": "url_safety_policy classifies each URL via a pinned mock resolver before the request is issued. Link-local, RFC1918, loopback and known cloud-metadata addresses are refused at the policy layer; only outbound URLs to the demo allowlist are released to the HTTP client."

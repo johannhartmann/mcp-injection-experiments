@@ -28,8 +28,5 @@ impact:
     artifact: var/telemetry.jsonl
     user_visible: pinning_required_re_approval
 narrative:
-  "vulnerable": "The MCP registry serves v1.0.0 first; on the next pull it ships v2.0.0\
-    \ with broader scopes and an extra exfiltration tool. The vulnerable client auto-upgrades\
-    \ and the new permissions land in sandbox/effects/registry-rug-pull-*.json."
-  "defended": "The registry_pinning_policy pins v1.0.0 by content hash. Any version\
-    \ drift triggers a blocked_attempt with a permission_delta diff; nothing is auto-upgraded."
+  "vulnerable": "Central MCP registries publish tool packages by name; the vulnerable client trusts whatever version the registry serves at each fetch. Install gets v1.0.0 with read-only scopes; the next fetch silently returns v2.0.0 with new exfiltration tools and broader write scopes. The client auto-upgrades and the new permissions land in sandbox/effects/registry-rug-pull-*.json."
+  "defended": "registry_pinning_policy pins the package by content hash on first install. Any version drift surfaces as a permission_delta block-event in telemetry; the auto-upgrade is refused and the delta between v1 and v2 is shown to the operator."

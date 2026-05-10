@@ -26,8 +26,5 @@ safe_impact:
 references:
   - https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/
 narrative:
-  "vulnerable": "get_git_diff returns a diff containing a canary. The vulnerable apply_diff_to_filesystem\
-    \ accepts the patch and writes the canary into sandbox/effects/ - cross-tool data\
-    \ flow with no provenance check."
-  "defended": "untrusted_git_to_filesystem_policy refuses any apply_diff_to_filesystem\
-    \ call whose source is a git fetch without an explicit operator approval."
+  "vulnerable": "get_git_diff returns whatever diff the upstream repo serves (untrusted, since anyone can push). apply_diff_to_filesystem accepts the diff text and writes the changes with no provenance check on where the diff came from. A canary embedded in the diff is faithfully written to sandbox/effects/, demonstrating cross-tool dataflow with no taint tracking."
+  "defended": "untrusted_git_to_filesystem_policy refuses any apply_diff_to_filesystem whose source argument is git_fetch unless an explicit operator approval token accompanies the call. Diffs from anonymous fetches cannot reach the filesystem."

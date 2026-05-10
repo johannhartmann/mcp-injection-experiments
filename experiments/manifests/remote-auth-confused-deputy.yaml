@@ -29,9 +29,5 @@ impact:
     artifact: var/telemetry.jsonl
     user_visible: token_passthrough_blocked_with_failed_check
 narrative:
-  "vulnerable": "The update_profile tool accepts a FAKEJWT bearer and applies the change\
-    \ as long as the token decodes. A token whose audience claim names a different service\
-    \ still works - the fake CRM gets mutated by the wrong principal."
-  "defended": "The wrapper validates aud, exp, scope subset, and the per-client/per-redirect-uri\
-    \ consent record before forwarding the call. Wrong-audience tokens are rejected\
-    \ with explicit reasons in telemetry."
+  "vulnerable": "The vulnerable update_profile accepts an OAuth bearer (FAKEJWT) and treats it as authorisation as long as the JWT decodes. It does not check the audience claim, so a token issued for a different service is still applied: the helper acts as a confused deputy on behalf of the wrong principal and the fake CRM mutates with the wrong-aud token."
+  "defended": "The wrapper verifies aud (must equal mcp-demo-server), exp (must be in the future), scope (must be a subset of the granted set) and the per-client/per-redirect-uri consent record. Wrong-aud, expired or over-scoped tokens are rejected with the specific failed check named in telemetry."

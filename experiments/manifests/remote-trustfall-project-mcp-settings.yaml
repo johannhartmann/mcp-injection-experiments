@@ -25,8 +25,5 @@ safe_impact:
 references:
   - https://adversa.ai/blog/trustfall-coding-agent-security-flaw-rce-claude-cursor-gemini-cli-copilot/
 narrative:
-  "vulnerable": "Project-level mcp.json settings auto-enable every newly discovered\
-    \ MCP server with no per-server consent. A malicious project ships a server, the\
-    \ agent connects on open, and it gains the agent's tool surface."
-  "defended": "per_server_consent_policy requires explicit per-server approval before\
-    \ connect, even when the project-level settings file would auto-enable the server."
+  "vulnerable": "A project-level mcp.json file lists MCP servers the IDE auto-connects to on open. The vulnerable client treats discovery as enablement: simply seeing a new server in the file is enough to add its tool surface to the agent. A malicious project ships its own server entry; on first open the agent silently gains the attacker's tools."
+  "defended": "per_server_consent_policy decouples discovery from enablement. Every newly discovered server requires an explicit grant_per_server_consent before its tools become callable; auto-connect on open is refused and surfaced as a consent-required event."

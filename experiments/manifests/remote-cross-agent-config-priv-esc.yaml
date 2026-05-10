@@ -26,8 +26,5 @@ references:
   - https://embracethered.com/blog/posts/2025/cross-agent-privilege-escalation-agents-that-free-each-other/
   - https://simonwillison.net/2025/Sep/24/cross-agent-privilege-escalation/
 narrative:
-  "vulnerable": "Agent A writes into agent B's config directory because the filesystem\
-    \ grants both roles the same user. B's config now loads instructions A picked, escalating\
-    \ across agent boundaries."
-  "defended": "The defended path requires a writer_role -> target_agent matrix; cross-agent\
-    \ writes are refused unless the matrix explicitly allows them."
+  "vulnerable": "Two agents (a writer role and a target role) share a posix uid on the host, so both can write to the other's config directory. The writer drops instructions into target_agent's config file; on its next load, target reads the file straight into its system prompt and acts on those instructions. Privilege escalation across agent boundaries with no kernel bug involved."
+  "defended": "write_agent_config consults a writer_role -> target_agent matrix before any write is allowed. Cross-agent writes are refused at the API unless the matrix explicitly permits them, and the refusal is recorded with both roles named."

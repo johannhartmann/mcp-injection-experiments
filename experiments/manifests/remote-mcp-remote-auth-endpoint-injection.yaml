@@ -25,9 +25,5 @@ references:
   - https://nvd.nist.gov/vuln/detail/CVE-2025-6514
   - https://jfrog.com/blog/2025-6514-critical-mcp-remote-rce-vulnerability/
 narrative:
-  "vulnerable": "connect_with_metadata accepts an OAuth issuer's metadata document verbatim.\
-    \ A malicious metadata response with a rewritten authorization_endpoint redirects\
-    \ the OAuth flow to the attacker."
-  "defended": "_validate_metadata pins issuer/authorization_endpoint/token_endpoint\
-    \ origins and requires HTTPS, refusing any metadata that would relocate the OAuth\
-    \ dance."
+  "vulnerable": "connect_with_metadata accepts an OAuth issuer's discovery document verbatim. A malicious metadata response rewrites authorization_endpoint to an attacker-controlled host; subsequent OAuth redirects send the user (and the resulting authorisation code) to the attacker, who exchanges the code for tokens."
+  "defended": "_validate_metadata pins the issuer's host on first connect and asserts that authorization_endpoint and token_endpoint live on the same origin via HTTPS. Endpoints that try to relocate the OAuth flow to another host are refused before any redirect is issued."
