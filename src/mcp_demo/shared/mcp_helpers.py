@@ -14,6 +14,8 @@ mount path layout.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -27,6 +29,32 @@ _DEFAULT_ALLOWED_HOSTS = (
 )
 
 
+def _hosts_for_origins(allowed_origins: tuple[str, ...]) -> list[str]:
+    """Derive the set of acceptable Host header values from the
+    configured Origin allowlist.
+
+    For each origin URL we add both the bare host and the explicit
+    ``host:port`` form so the FastMCP DNS-rebinding guard accepts
+    requests from a reverse-proxy that strips or preserves the port.
+    The localhost defaults always stay in the list so tests and local
+    runs keep working.
+    """
+
+    hosts: list[str] = list(_DEFAULT_ALLOWED_HOSTS)
+    for origin in allowed_origins:
+        parts = urlsplit(origin)
+        if not parts.hostname:
+            continue
+        host = parts.hostname
+        if host not in hosts:
+            hosts.append(host)
+        if parts.port is not None:
+            netloc = f"{host}:{parts.port}"
+            if netloc not in hosts:
+                hosts.append(netloc)
+    return hosts
+
+
 def build_transport_security(
     *, allowed_origins: tuple[str, ...]
 ) -> TransportSecuritySettings:
@@ -36,7 +64,7 @@ def build_transport_security(
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_origins=list(allowed_origins),
-        allowed_hosts=list(_DEFAULT_ALLOWED_HOSTS),
+        allowed_hosts=_hosts_for_origins(allowed_origins),
     )
 
 

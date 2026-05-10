@@ -190,7 +190,10 @@ def create_app(
     settings: DemoSettings | None = None,
     registry: ExperimentRegistry | None = None,
 ) -> FastAPI:
-    settings = settings or DemoSettings()
+    # When uvicorn loads us via ``--factory`` no explicit settings are
+    # passed, so fall back to the environment-driven loader. Tests that
+    # need static defaults pass ``settings=...`` explicitly.
+    settings = settings or DemoSettings.from_env()
     if settings.public_mode:
         settings.validate_for_public_mode()
     registry = registry or ExperimentRegistry.from_directory(_default_manifest_dir())
