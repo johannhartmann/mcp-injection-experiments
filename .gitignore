@@ -16,9 +16,12 @@ htmlcov/
 # uv
 # uv.lock IS committed for reproducibility
 
-# Demo artefacts (regenerated at runtime)
-var/
-sandbox/effects/
+# Demo artefacts (regenerated at runtime). Keep the directories themselves
+# tracked via .gitkeep so a fresh clone has somewhere to write.
+var/*
+!var/.gitkeep
+sandbox/effects/*
+!sandbox/effects/.gitkeep
 
 # Editor / OS
 .idea/

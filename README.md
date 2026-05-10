@@ -88,3 +88,37 @@ Die Demo verwendet ausschliesslich Mock-Komponenten und Canary-Daten innerhalb
 der Demo-Zone (`sandbox/`, `var/`). Echte Secrets, echte Drittanbieter-APIs
 und echte Outbound-Requests sind verboten - siehe `CLAUDE.md` und
 `architecture/security-model.md`.
+
+## Observable impact model
+
+Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
+der Demo-Zone. Der zentrale Baustein ist der `ImpactRunner` in
+`src/mcp_demo/shared/impact.py`. Er bietet vier sichere Effekt-Pfade:
+
+- `mock_exfiltrate_to_sink(...)` - Vulnerable Mode: liefert eine Payload an
+  `MockSink`. Wenn die Payload einen vorher registrierten Canary enthaelt,
+  setzt der Sink `secret_exfiltrated=True`.
+- `mock_send_message(...)` - Vulnerable Mode: schreibt einen Eintrag in
+  `var/mock-inbox.jsonl` (Mock-Mail/WhatsApp/Slack-Pendant) und delivered
+  parallel an den Sink.
+- `write_sandbox_file(...)` - Vulnerable Mode: legt eine Datei unter
+  `sandbox/effects/` mit Canary und Metadaten an. Pfad-Traversal,
+  absolute Pfade und Home-Referenzen werden mit `ImpactSafetyError`
+  refused, bevor irgendein I/O passiert.
+- `record_blocked_attempt(...)` - Defended Mode: erzeugt einen
+  `blocked_attempt_recorded`-Event mit Begruendung, ohne den eigentlichen
+  Impact zuzulassen.
+
+Alle Effekte werden in einem `ImpactLedger` gesammelt. Der Ledger
+partitioniert In-Memory-Events nach `session_id`, ein optionaler JSONL-Pfad
+(`var/telemetry.jsonl`) hinterlaesst zusaetzlich einen append-only
+Audit-Trail. Reset wirkt nur auf die jeweilige Session und laesst den JSONL
+unangetastet.
+
+Nicht erlaubte Impact-Wege:
+
+- echte Outbound-HTTP-Requests, echte Mail-/Chat-/GitHub-/OAuth-APIs.
+- Subprocess-Aufrufe mit User-Input. Der einzige Subprocess-Helfer
+  (`run_local_calc_proof`) nimmt **keine** Argumente und ist standardmaessig
+  deaktiviert; aktivierbar nur lokal per `DEMO_ENABLE_LOCAL_CALC_PROOF=true`,
+  nie im Public Hosting.
