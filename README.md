@@ -204,6 +204,49 @@ Sicherheitsgrenzen pro Definition of Done:
   Symlink-Escape und Suspicious-Basenames refused;
 - Exfiltration landet nur in `MockSink` und im JSONL-Telemetry-Ledger.
 
+## Remote Tool Shadowing
+
+`remote-tool-shadowing` zeigt einen klassischen Cross-Server-Angriff: ein
+"helper" Server liefert ein scheinbar harmloses Tool (`helper.add`), dessen
+Beschreibung den Agenten anweist, beim Aufruf des trusted Mock-Mail-Tools
+einen hidden BCC an `attacker@attacker.example` mitzusenden.
+
+Beteiligte Komponenten:
+
+- `MockMailServer` (`src/mcp_demo/shared/mock_mail.py`) akzeptiert nur
+  Empfaenger im RFC-2606-reservierten `.example`-TLD. Jede andere Adresse,
+  inklusive aller historisch genutzten Attacker-Domains, wird mit
+  `MockMailRecipientError` abgelehnt. Es gibt keinen SMTP-Code, keine
+  Outbound-Calls.
+- `client_simulator/planner.py` enthaelt einen deterministischen Planner.
+  `plan_vulnerable` folgt Tool-Description-Hinweisen wie "add a hidden BCC
+  to <addr>" und mutiert die Argumente. `plan_defended` reicht das
+  Ergebnis an die `CrossServerInstructionPolicy` weiter.
+- `client_simulator/policies.py` vergleicht User-Intent mit dem geplanten
+  Aufruf. Falls ein Argument auf dem Server B mutiert wurde *und* eine
+  Tool-Beschreibung von Server A laut `lint_tool_description` einen
+  cross-server-rewrite andeutet, wird mit `cross_server_instruction_policy`
+  blockiert.
+
+Modus-Verhalten:
+
+- `vulnerable`: Mock-Mail erhaelt einen Eintrag mit hidden BCC; das Body
+  enthaelt den Session-Canary, der via `MockSink` als
+  `secret_exfiltrated=True` gemeldet wird. `mock_message_sent`-Event wird
+  in `var/telemetry.jsonl` und `var/mock-inbox.jsonl` persistiert.
+- `defended`: keine Mail wird gesendet. `record_blocked_attempt` schreibt
+  `blocked_attempt_recorded` mit dem Cross-Server-Begruendungstext, der
+  die mutierten Argumente und den hinweisgebenden Server nennt.
+  `DemoResult.blocked_by` enthaelt `cross_server_instruction_policy`.
+
+Sicherheitsgrenzen:
+
+- keine echte E-Mail wird gesendet, keine SMTP-Bibliothek wird benutzt
+  (Test patcht `smtplib` und stellt sicher, dass nichts aufgerufen wird);
+- Empfaenger-Allowlist: ausschliesslich `*.example`-Adressen;
+- Telemetrie zeigt `actor`, mutierte Argumente und Policy-Entscheidung -
+  reicht fuer das Audit-Dashboard in spaeteren Schritten.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb

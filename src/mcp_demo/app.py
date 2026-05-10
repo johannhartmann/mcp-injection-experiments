@@ -26,6 +26,9 @@ from mcp_demo.experiments.direct_poisoning import (
     build_endpoint as build_direct_poisoning,
 )
 from mcp_demo.experiments.registry import ExperimentRegistry
+from mcp_demo.experiments.tool_shadowing import (
+    build_default_runtime as build_tool_shadowing_runtime,
+)
 from mcp_demo.transport.streamable_http import (
     SessionStore,
     build_endpoint_router,
@@ -89,6 +92,15 @@ def create_app(
                 sessions=app.state.sessions,
                 settings=settings,
             )
+        )
+
+    if "remote-tool-shadowing" in registry:
+        # The shadowing demo is currently driven via run_scenario rather than
+        # a tools/list+tools/call surface, but we still construct its runtime
+        # at startup so /readyz reports a stable shape.
+        app.state.tool_shadowing_runtime = build_tool_shadowing_runtime(
+            sandbox_dir=_repo_root() / "sandbox",
+            var_dir=_repo_root() / "var",
         )
 
     return app
