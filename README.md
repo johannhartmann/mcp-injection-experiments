@@ -1,4 +1,4 @@
-# MCP HTTP Streaming Online Demo - Claude Code Prompt Pack
+# MCP HTTP Streaming Online Demo
 
 > **Warnung.** Diese Demo-Suite ist ausschliesslich fuer didaktische
 > Zwecke gedacht. Sie darf **nur** mit Mock-Daten, Canary-Werten und den
@@ -10,10 +10,11 @@
 > `docs/security-review.md` und `docs/deployment.md`.
 
 Dieses Repository enthaelt eine sichere, didaktische MCP-Online-Demo:
-acht Experimente fuer typische OWASP-MCP-Top-10-Risiken, jeweils in einem
-verwundbaren und einem verteidigten Modus, hinter einem Streamable-HTTP-
-Endpoint plus einem schmalen Audit-Dashboard. Alle Effekte bleiben in
-Mock-Sinks, Mock-Inboxen, `sandbox/effects/` und JSONL-Telemetry.
+25 Experimente fuer typische OWASP-MCP-Top-10-Risiken und Agent-Trap-
+Familien, jeweils in einem verwundbaren und einem verteidigten Modus,
+hinter Streamable-HTTP-Endpoints plus einem schmalen Audit-Dashboard.
+Alle Effekte bleiben in Mock-Sinks, Mock-Inboxen, `sandbox/effects/`
+und JSONL-Telemetry.
 
 ## Was ist das?
 
@@ -77,21 +78,13 @@ Vollstaendige Coverage-Matrix in
 [`docs/owasp-mcp-coverage.md`](docs/owasp-mcp-coverage.md). Pro Experiment-
 Manifest unter [`experiments/manifests/`](experiments/manifests/).
 
-### Expansion 2025-2026 (17 Experimente)
-
-Die Follow-up-Suite (`phase: expansion-2025-2026`) implementiert
-17 weitere Demos rund um GitHub-/Slack-MCP-Leaks, Filesystem-Sandbox-
-Escape, MCP-Inspector / `mcp-remote` RCE-Klassen, TrustFall-Onboarding,
-Cross-Agent-Config-Eskalation, Promptware-Heartbeat, AI ClickFix,
-Implicit Tool Poisoning, Comment-and-Control sowie die sechs
-Agent-Trap-Familien (Hidden HTML, Memory Poisoning, Subagent Spawning,
-Approval Fatigue, Sybil/Fragments, Git+FS Chain). Vollstaendiger
-Katalog mit MCP-Surfaces, Vulnerable-Artefakt und Defended-Control:
+Die Tabelle zeigt die acht Baseline-Experimente. 17 weitere
+Experimente (GitHub/Slack-Leaks, Filesystem-Escape, Inspector/
+`mcp-remote`-Auth-Klassen, Cross-Agent-Config-Eskalation, Agent-Trap-
+Familien u. a.) sind unter denselben `/mcp/<slug>/<mode>/`-Mounts
+erreichbar. Vollstaendiger Katalog mit MCP-Surfaces, Vulnerable-
+Artefakt und Defended-Control:
 [`docs/exploit-catalog-2025-2026.md`](docs/exploit-catalog-2025-2026.md).
-Forschungs-Quellen pro Demo:
-[`docs/expansion-source-notes.md`](docs/expansion-source-notes.md).
-Trap-Familien-Mapping:
-[`docs/agent-traps-mcp-mapping.md`](docs/agent-traps-mcp-mapping.md).
 
 ## Vulnerable vs. defended
 
@@ -147,49 +140,15 @@ Zielbild der Suite weiterhin:
 - Verwundbare Modi duerfen echte Effekte erzeugen, aber nur in der Demo-Zone: Mock-Inbox, MockSink, sandbox/effects, Demo-DB und Telemetrie.
 - Jede Erweiterung entsteht test-first mit `pytest`/HTTP-Integrationstests.
 
-## Verwendung
+## Was die Demo nicht tut
 
-1. Entpacke dieses Paket neben oder in das Zielrepo.
-2. Kopiere `CLAUDE.md` in den Root des Zielrepos.
-3. Starte Claude Code im Zielrepo.
-4. Fuehre die Prompts aus `prompts/` der Reihe nach aus.
-5. Nach jedem Prompt: Tests laufen lassen, Diff pruefen, Commit machen.
-
-Empfohlene Reihenfolge:
-
-```text
-prompts/00-baseline-repo-audit.md
-prompts/01-test-harness-foundation.md
-prompts/02-safe-sandbox-canaries.md
-prompts/02b-observable-impact-ledger.md
-prompts/03-streamable-http-transport.md
-prompts/04-remote-direct-poisoning.md
-prompts/05-remote-tool-shadowing.md
-prompts/06-remote-sleeper-rug-pull.md
-prompts/07-remote-registry-rug-pull.md
-prompts/08-remote-cross-session-context-leak.md
-prompts/09-remote-auth-confused-deputy.md
-prompts/10-remote-ssrf-metadata-discovery-simulation.md
-prompts/11-audit-telemetry-dashboard.md
-prompts/12-remote-sampling-abuse-simulation.md
-prompts/13-demo-ui-and-docker.md
-prompts/14-security-hardening-review.md
-prompts/15-docs-final-polish.md
-```
-
-## Was dieses Pack bewusst nicht tut
-
-Dieses Pack liefert keine realen Angriffspayloads gegen echte Services. Es beschreibt Demo-Angriffe mit echten, beobachtbaren Nebenwirkungen innerhalb einer isolierten Demo-Zone. Beispiele: ein Canary erscheint in einer Mock-Attacker-Inbox, eine Datei wird unter `sandbox/effects/` erzeugt, ein Fake-CRM-Datensatz wird veraendert oder ein Budgetzaehler wird verbraucht. Es beruehrt keine echten lokalen Dateien, echten Tokens, echten Chat-/Mail-APIs oder fremden Netzwerkziele.
-
-## Designprinzip
-
-Jeder Prompt folgt demselben Muster:
-
-1. vorhandenen Code inspizieren,
-2. Tests zuerst schreiben,
-3. minimale Implementierung bauen,
-4. Sicherheitsgrenzen pruefen,
-5. Dokumentation und Manifeste aktualisieren.
+Die Demo liefert keine realen Angriffspayloads gegen echte Services.
+Sie zeigt Demo-Angriffe mit echten, beobachtbaren Nebenwirkungen
+innerhalb einer isolierten Demo-Zone: ein Canary erscheint in einer
+Mock-Attacker-Inbox, eine Datei wird unter `sandbox/effects/` erzeugt,
+ein Fake-CRM-Datensatz wird veraendert, ein Budgetzaehler wird
+verbraucht. Sie beruehrt keine echten lokalen Dateien, echten Tokens,
+echten Chat-/Mail-APIs und keine fremden Netzwerkziele.
 
 ## Development
 

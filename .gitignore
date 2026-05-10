@@ -41,3 +41,9 @@ SHA256SUMS.txt
 mcp-http-streaming-demo-prompt-pack/
 mcp-http-streaming-demo-prompt-pack-v2*.zip
 mcp-exploit-expansion-followup-promptset*.zip
+
+# Implementation working directories (prompt packs, internal notes).
+# These are scaffolding for whoever is *building* the demo, not for
+# users of the demo - keep them out of the repo.
+prompts/
+prompts-followup/
