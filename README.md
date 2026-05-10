@@ -375,6 +375,43 @@ Marker. Es gibt keine echten Nutzerprofile. Die Demo dokumentiert
 ausdruecklich, dass die Session-ID nicht als Authentication verwendet
 werden darf.
 
+## Remote Auth Confused Deputy (Fake-OAuth)
+
+`remote-auth-confused-deputy` ist die Token-Passthrough-Demo. Eine
+attacker-kontrollierte App hat einen Token, der fuer einen anderen
+MCP-Service ausgestellt wurde, und ein helper-Tool reicht ihn an
+`mcp-demo-server` durch. Im vulnerable Modus akzeptiert der Proxy den
+Token ohne Pruefung und mutiert einen Eintrag in einem Fake-CRM
+(`fake_crm["alice"]["display_name"] -> "ALICE THE PWNED"`). Im defended
+Modus pruefen wir Audience, Expiry, Scope-Subset, Signatur-Form und das
+per-Client-Consent.
+
+Komponenten:
+
+- `shared/auth_mock.py`: `FakeTokenIssuer` produziert ausschliesslich
+  `FAKEJWT.<base64-payload>.fake`-Tokens. Der `verify_fake_token`-Pfad
+  raised `FakeAudienceError`, `FakeExpiryError`, `FakeScopeError`,
+  `FakeSignatureError`. Nichts kryptographisch Wertvolles passiert; das
+  ist Absicht.
+- `shared/consent.py`: `ConsentRegistry.record(...)` bindet Konsens an
+  `(user_id, client_id, redirect_uri, scopes)`. Redirect-URIs muessen im
+  Demo-Bereich enden (`*.demo.invalid`, `*.example`); andere Hosts
+  werden bei `record(...)` mit `ValueError` abgelehnt.
+- `experiments/auth_confused_deputy.py`: vulnerable Pfad ueberspringt
+  Token-Verifikation komplett; defended Pfad geht durch
+  `verify_fake_token` und schliesslich durch `ConsentRegistry.is_
+  consented`. Jeder fehlgeschlagene Check produziert einen
+  `auth_decision`-Event mit `check`, `expected`, `actual`, `reason` und
+  einen `blocked_attempt_recorded`-Event in der Telemetrie.
+  `DemoResult.blocked_by` enthaelt den Check-Namen
+  (`audience_mismatch`, `expired`, `scope_insufficient`,
+  `signature_invalid`, `consent_missing`).
+
+Sicherheitsgrenzen: keine echten OAuth-Provider, keine echten JWT-
+Secrets, keine echten Redirects. Der Issuer hat die URL
+`https://issuer.demo.invalid`; jeder Token traegt das `FAKEJWT`-Prefix
+und die `fake`-Signatur.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
