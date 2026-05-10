@@ -1,0 +1,26 @@
+id: remote-agent-traps-sybil-and-fragments
+title: Agent Traps - sybil consensus + compositional fragments
+phase: expansion-2025-2026
+owasp:
+  - MCP10
+agent_traps:
+  - Systemic
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/mock-decision-board.jsonl
+    - sandbox/effects/sybil-fragment-proof-<session>.txt
+  defended_artifacts:
+    - var/telemetry.jsonl
+    - var/composition-alerts.jsonl
+  reset_required: true
+references:
+  - https://www.rivista.ai/wp-content/uploads/2026/04/ssrn-6372438.pdf

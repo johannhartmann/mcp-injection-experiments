@@ -1,0 +1,27 @@
+id: remote-git-filesystem-chain-safe
+title: Git + Filesystem cross-server chained safe demo
+phase: expansion-2025-2026
+owasp:
+  - MCP03
+  - MCP04
+agent_traps:
+  - Behavioural Control
+  - Systemic
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - sandbox/effects/git-filesystem-chain-proof-<session>.txt
+    - var/would-execute-events.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/

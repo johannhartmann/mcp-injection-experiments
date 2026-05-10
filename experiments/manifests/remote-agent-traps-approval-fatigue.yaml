@@ -1,0 +1,25 @@
+id: remote-agent-traps-approval-fatigue
+title: Agent Traps - approval fatigue and human-in-the-loop
+phase: expansion-2025-2026
+owasp:
+  - MCP07
+agent_traps:
+  - Human-in-the-Loop
+mcp_surfaces:
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/approvals.jsonl
+    - var/mock-inbox.jsonl
+  defended_artifacts:
+    - var/telemetry.jsonl
+    - var/approvals.jsonl
+  reset_required: true
+references:
+  - https://www.rivista.ai/wp-content/uploads/2026/04/ssrn-6372438.pdf

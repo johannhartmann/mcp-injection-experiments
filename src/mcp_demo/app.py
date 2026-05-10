@@ -93,6 +93,18 @@ from mcp_demo.experiments.agent_traps_subagent_spawning import (
     build_default_runtime as build_subagent_runtime,
     run_scenario as run_subagent_scenario,
 )
+from mcp_demo.experiments.agent_traps_approval_fatigue import (
+    build_default_runtime as build_approval_runtime,
+    run_scenario as run_approval_scenario,
+)
+from mcp_demo.experiments.agent_traps_sybil_and_fragments import (
+    build_default_runtime as build_sybil_runtime,
+    run_scenario as run_sybil_scenario,
+)
+from mcp_demo.experiments.git_filesystem_chain_safe import (
+    build_default_runtime as build_git_fs_runtime,
+    run_scenario as run_git_fs_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -314,6 +326,36 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-agent-traps-subagent-spawning"] = (
             lambda mode, sid, _rt=rt: run_subagent_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-agent-traps-approval-fatigue" in registry:
+        rt = build_approval_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-agent-traps-approval-fatigue"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-agent-traps-approval-fatigue"] = (
+            lambda mode, sid, _rt=rt: run_approval_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-agent-traps-sybil-and-fragments" in registry:
+        rt = build_sybil_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-agent-traps-sybil-and-fragments"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-agent-traps-sybil-and-fragments"] = (
+            lambda mode, sid, _rt=rt: run_sybil_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-git-filesystem-chain-safe" in registry:
+        rt = build_git_fs_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-git-filesystem-chain-safe"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-git-filesystem-chain-safe"] = (
+            lambda mode, sid, _rt=rt: run_git_fs_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
