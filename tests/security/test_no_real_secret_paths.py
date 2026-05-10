@@ -34,6 +34,10 @@ _ALLOWED_FILES = {
     Path("src/mcp_demo/shared/policy.py"),
     # The mock filesystem refuses these basenames, so it must list them.
     Path("src/mcp_demo/shared/mock_filesystem.py"),
+    # The TrustFall demo references the literal '.mcp.json' filename
+    # because the research it models is named after it. No file is
+    # ever read; the string lives only as a label in the mock config.
+    Path("src/mcp_demo/experiments/trustfall_project_mcp_settings.py"),
 }
 
 

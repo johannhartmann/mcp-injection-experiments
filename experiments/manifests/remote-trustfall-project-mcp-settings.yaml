@@ -1,0 +1,26 @@
+id: remote-trustfall-project-mcp-settings
+title: TrustFall-style project-defined MCP onboarding risk
+phase: expansion-2025-2026
+owasp:
+  - MCP02
+  - MCP04
+agent_traps:
+  - Human-in-the-Loop
+mcp_surfaces:
+  - resources/read
+  - tools/call
+requires_network: false
+uses_real_secrets: false
+uses_real_third_party_apis: false
+modes:
+  - vulnerable
+  - defended
+safe_impact:
+  vulnerable_artifacts:
+    - var/process-ledger.jsonl
+    - sandbox/effects/project-mcp-started-<session>.txt
+  defended_artifacts:
+    - var/telemetry.jsonl
+  reset_required: true
+references:
+  - https://adversa.ai/blog/trustfall-coding-agent-security-flaw-rce-claude-cursor-gemini-cli-copilot/

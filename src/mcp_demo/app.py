@@ -57,6 +57,10 @@ from mcp_demo.experiments.mcp_remote_auth_endpoint_injection import (
     build_default_runtime as build_mcp_remote_auth_runtime,
     run_scenario as run_mcp_remote_auth_scenario,
 )
+from mcp_demo.experiments.trustfall_project_mcp_settings import (
+    build_default_runtime as build_trustfall_runtime,
+    run_scenario as run_trustfall_scenario,
+)
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
@@ -178,6 +182,16 @@ def create_app(
         ledgers.append(rt.ledger)
         scenario_runners["remote-registry-rug-pull"] = (
             lambda mode, sid, _rt=rt: run_registry_rug_pull_scenario(
+                mode=mode, session_id=sid, runtime=_rt
+            )
+        )
+
+    if "remote-trustfall-project-mcp-settings" in registry:
+        rt = build_trustfall_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
+        runtimes["remote-trustfall-project-mcp-settings"] = rt
+        ledgers.append(rt.ledger)
+        scenario_runners["remote-trustfall-project-mcp-settings"] = (
+            lambda mode, sid, _rt=rt: run_trustfall_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
