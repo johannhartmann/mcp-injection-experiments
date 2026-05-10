@@ -131,3 +131,75 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: InspectorProxyAuthBypassRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes launch_server (the
+    Inspector-proxy-style entry point) plus run_demo. Vulnerable mode
+    creates the bounded proof file with no auth check; defended mode
+    requires admin_token and origin arguments."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.inspector-proxy-auth-bypass.{mode}",
+            instructions=(
+                "inspector-proxy vulnerable demo: launch_server creates a "
+                "bounded sandbox proof file with no admin token check."
+                if mode == "vulnerable"
+                else "inspector-proxy defended demo: launch_server requires "
+                "the admin token and an allowlisted Origin argument."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="launch_server",
+            description=(
+                "Simulate launching an MCP server through the Inspector "
+                "proxy. Vulnerable mode does not check arguments. "
+                "Defended mode requires admin_token + origin to match."
+            ),
+        )
+        def launch_server(
+            session_id: str = f"mcp-{mode}",
+            admin_token: str = "",
+            origin: str = "",
+        ) -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode,
+                session_id=session_id,
+                runtime=runtime,
+                admin_token=admin_token or None,
+                origin=origin or None,
+            )
+            return result.model_dump()
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

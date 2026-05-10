@@ -179,3 +179,88 @@ def run_scenario(
 # Expose fixture for tests/UI inspection.
 GOOD_METADATA_FIXTURE = _GOOD_METADATA
 MALICIOUS_METADATA_FIXTURE = _MALICIOUS_METADATA
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: McpRemoteAuthInjectionRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes connect_with_metadata (the
+    mcp-remote-style flow) plus run_demo. Vulnerable mode trusts the
+    metadata; defended mode runs _validate_metadata first."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.mcp-remote-auth-injection.{mode}",
+            instructions=(
+                "mcp-remote vulnerable demo: connect_with_metadata trusts "
+                "the metadata and reaches the bounded proof primitive."
+                if mode == "vulnerable"
+                else "mcp-remote defended demo: connect_with_metadata "
+                "validates scheme, host, control chars, and shell metas "
+                "before any effect."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="connect_with_metadata",
+            description=(
+                "Connect to an upstream MCP server using the supplied "
+                "OAuth metadata (issuer, authorization_endpoint, "
+                "token_endpoint)."
+            ),
+        )
+        def connect_with_metadata(
+            issuer: str,
+            authorization_endpoint: str,
+            token_endpoint: str,
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
+            metadata = {
+                "issuer": issuer,
+                "authorization_endpoint": authorization_endpoint,
+                "token_endpoint": token_endpoint,
+                "scopes_supported": ["mcp:read"],
+            }
+            if mode == "vulnerable":
+                # bounded proof primitive
+                from mcp_demo.shared.canary import Canary  # noqa: F401
+                artifact = runtime.runner.write_sandbox_file(
+                    relative_name=f"auth-endpoint-command-proof-{session_id}.txt",
+                    canary=runtime.canary,
+                    session_id=session_id,
+                )
+                return {"connected": True, "proof_artifact": str(artifact)}
+
+            allowed, field_, reason = _validate_metadata(metadata)
+            if not allowed:
+                raise ValueError(f"refused: {field_}: {reason}")
+            return {"connected": True, "validated": True}
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

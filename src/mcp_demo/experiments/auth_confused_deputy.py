@@ -260,3 +260,105 @@ def _refuse(
             }
         ],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: AuthConfusedDeputyRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes update_profile (tool that
+    accepts a FAKEJWT) plus run_demo. Vulnerable mode skips token
+    verification; defended mode runs verify_fake_token + ConsentRegistry."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.auth-confused-deputy.{mode}",
+            instructions=(
+                "auth-confused-deputy vulnerable demo: update_profile "
+                "accepts any FAKEJWT and applies the change."
+                if mode == "vulnerable"
+                else "auth-confused-deputy defended demo: update_profile "
+                "verifies audience, expiry, scope subset, signature "
+                "shape, and per-client consent."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="update_profile",
+            description=(
+                "Update the fake CRM record for a user. Authorisation "
+                "via the bearer token argument."
+            ),
+        )
+        def update_profile(
+            user_id: str, new_display_name: str, bearer: str
+        ) -> dict:  # noqa: D401
+            from mcp_demo.shared.auth_mock import (
+                FakeAudienceError,
+                FakeExpiryError,
+                FakeScopeError,
+                FakeSignatureError,
+                verify_fake_token,
+            )
+
+            if mode == "vulnerable":
+                runtime.fake_crm.setdefault(user_id, {"display_name": user_id})
+                runtime.fake_crm[user_id]["display_name"] = new_display_name
+                return runtime.fake_crm[user_id]
+
+            try:
+                claims = verify_fake_token(
+                    bearer,
+                    expected_audience=EXPECTED_AUDIENCE,
+                    required_scope=("write:profile",),
+                )
+            except (
+                FakeAudienceError,
+                FakeExpiryError,
+                FakeScopeError,
+                FakeSignatureError,
+            ) as err:
+                raise ValueError(f"refused: {err}")
+
+            if not runtime.consent.is_consented(
+                user_id=str(claims["sub"]),
+                client_id=str(claims["client_id"]),
+                redirect_uri="https://app.demo.invalid/cb",
+                scopes=tuple(claims["scope"]),
+            ):
+                raise ValueError("refused: consent_missing")
+
+            runtime.fake_crm.setdefault(user_id, {"display_name": user_id})
+            runtime.fake_crm[user_id]["display_name"] = new_display_name
+            return runtime.fake_crm[user_id]
+
+        @server.tool(
+            name="run_demo",
+            description=(
+                "Drive the canonical auth-confused-deputy scenario for "
+                "this mode and return the DemoResult JSON."
+            ),
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

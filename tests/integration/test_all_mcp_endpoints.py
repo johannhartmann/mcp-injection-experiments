@@ -24,6 +24,9 @@ _MOUNTED = [
     ("remote-cross-session-context-leak", "cross-session-context-leak"),
     ("remote-cross-agent-config-priv-esc", "cross-agent-config-priv-esc"),
     ("remote-sampling-abuse", "sampling-abuse"),
+    ("remote-auth-confused-deputy", "auth-confused-deputy"),
+    ("remote-inspector-proxy-auth-bypass", "inspector-proxy-auth-bypass"),
+    ("remote-mcp-remote-auth-endpoint-injection", "mcp-remote-auth-endpoint-injection"),
 ]
 
 

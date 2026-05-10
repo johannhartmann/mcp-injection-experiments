@@ -28,6 +28,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp_demo.config import DemoSettings
 from mcp_demo.experiments.auth_confused_deputy import (
     build_default_runtime as build_auth_runtime,
+    build_mcp_servers as build_auth_mcp_servers,
     run_scenario as run_auth_scenario,
 )
 from mcp_demo.experiments.cross_session_leak import (
@@ -54,10 +55,12 @@ from mcp_demo.experiments.filesystem_sandbox_escape import (
 )
 from mcp_demo.experiments.inspector_proxy_auth_bypass import (
     build_default_runtime as build_inspector_runtime,
+    build_mcp_servers as build_inspector_mcp_servers,
     run_scenario as run_inspector_scenario,
 )
 from mcp_demo.experiments.mcp_remote_auth_endpoint_injection import (
     build_default_runtime as build_mcp_remote_auth_runtime,
+    build_mcp_servers as build_mcp_remote_auth_mcp_servers,
     run_scenario as run_mcp_remote_auth_scenario,
 )
 from mcp_demo.experiments.trustfall_project_mcp_settings import (
@@ -451,6 +454,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-inspector-proxy-auth-bypass",
+            build_inspector_mcp_servers,
+            rt,
+        )
 
     if "remote-mcp-remote-auth-endpoint-injection" in registry:
         rt = build_mcp_remote_auth_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -461,6 +469,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-mcp-remote-auth-endpoint-injection",
+            build_mcp_remote_auth_mcp_servers,
+            rt,
+        )
 
     if "remote-auth-confused-deputy" in registry:
         rt = build_auth_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -470,6 +483,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_auth_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-auth-confused-deputy",
+            build_auth_mcp_servers,
+            rt,
         )
 
     if "remote-sampling-abuse" in registry:
