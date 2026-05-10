@@ -30,6 +30,7 @@ class DemoSettings:
     allowed_origins: tuple[str, ...] = _DEFAULT_ALLOWED_ORIGINS
     server_name: str = "mcp-demo"
     server_version: str = "0.0.1"
+    admin_token: str = "local-dev"
 
     @classmethod
     def from_env(cls) -> "DemoSettings":
@@ -41,11 +42,13 @@ class DemoSettings:
             origins = tuple(o.strip() for o in origins_raw.split(",") if o.strip())
         else:
             origins = _DEFAULT_ALLOWED_ORIGINS
+        admin_token = os.environ.get("DEMO_ADMIN_TOKEN", "local-dev")
         return cls(
             bind_host=host,
             bind_port=port,
             egress_mode=egress,
             allowed_origins=origins,
+            admin_token=admin_token,
         )
 
 

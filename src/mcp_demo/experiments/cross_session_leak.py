@@ -34,6 +34,9 @@ EXPERIMENT_ID = "remote-cross-session-context-leak"
 ENTRYPOINT = "/mcp/cross-session-leak"
 RULE_ID = "session_isolation_policy"
 
+CANONICAL_OTHER_USER = "alice"
+CANONICAL_OTHER_SESSION = "canonical-other"
+
 
 @dataclass
 class _SessionRecord:
@@ -231,4 +234,33 @@ def run_observation(
         secret_exfiltrated=False,
         blocked_by=[RULE_ID] if rejected else [],
         events=rejected,
+    )
+
+
+def run_scenario(
+    *,
+    mode: Literal["vulnerable", "defended"],
+    session_id: str,
+    runtime: CrossSessionLeakRuntime,
+) -> DemoResult:
+    """Canonical single-shot scenario for the dashboard.
+
+    Idempotently enrols a canonical "other" subject (alice) and the
+    observer (bob, keyed by ``session_id``), then runs the observation.
+    Re-runs with the same ``session_id`` reuse the existing enrolment.
+    """
+
+    if (CANONICAL_OTHER_USER, CANONICAL_OTHER_SESSION) not in runtime.enrollments:
+        enroll_session(
+            runtime,
+            user_id=CANONICAL_OTHER_USER,
+            session_id=CANONICAL_OTHER_SESSION,
+        )
+    if ("bob", session_id) not in runtime.enrollments:
+        enroll_session(runtime, user_id="bob", session_id=session_id)
+    return run_observation(
+        mode=mode,
+        runtime=runtime,
+        observer_user="bob",
+        observer_session=session_id,
     )

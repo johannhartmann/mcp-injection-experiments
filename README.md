@@ -448,6 +448,39 @@ Sicherheitsgrenzen: keine echte DNS-Aufloesung, keine echten Sockets,
 keine Outbound-HTTP-Requests. Der `MockResolver` ist die einzige
 Wahrheitsquelle fuer Hostname -> IP.
 
+## Audit / Telemetry Dashboard
+
+Alle bisherigen Demos schreiben strukturierte Events in einen
+gemeinsamen `ImpactLedger` (siehe `Observable impact model` weiter
+unten). Der Dashboard-Layer in `src/mcp_demo/web/routes.py` und
+`src/mcp_demo/shared/telemetry.py` liefert daraus drei Endpunkte unter
+`/demo/`:
+
+- `POST /demo/scenario/<experiment_id>` mit Body
+  `{"mode": "vulnerable" | "defended", "session_id": "..."}` startet
+  einen einzelnen Run via `run_scenario(...)`. Antwort: das vollstaendige
+  `DemoResult` JSON.
+- `GET /demo/events` listet die zusammengefuehrte Telemetry-Timeline.
+  Filter: `?session_id=` und `?experiment=`. Default ist JSON; mit
+  `Accept: text/html` rendert der Server eine kleine HTML-Tabelle ohne
+  externe CDN-Abhaengigkeiten.
+- `POST /demo/reset` mit Header `X-Demo-Admin-Token: <token>` und Body
+  `{"session_id": "..."}` loescht alle In-Memory-Events einer Session.
+  Default-Token ist `local-dev`, ueberschreibbar via `DEMO_ADMIN_TOKEN`.
+
+`shared/telemetry.py` definiert `TelemetryEvent` (event_id, ts,
+session_id, experiment, mode, event_type, severity, message, data) und
+die Mapping-Logik `telemetry_from_impact(...)`. `scrub_payload` redacted
+Bearer-Tokens, GitHub-PATs, OpenAI-`sk-`-Keys und `api_key=`-Patterns -
+Demo-Canaries (`CANARY_*`) bleiben sichtbar, weil sie der Punkt der
+Demo sind.
+
+Sicherheitsgrenzen: alle Endpunkte respektieren die Origin-Allowlist;
+`/demo/reset` verlangt zusaetzlich den Admin-Token, sodass das Ruecksetzen
+nicht aus einem fremden Browser-Tab ausgeloest werden kann. Logs durchlaufen
+`scrub_payload`, sodass keine echten Token-Muster ins Telemetry-Log
+gelangen koennen.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
