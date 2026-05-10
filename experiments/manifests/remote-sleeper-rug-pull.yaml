@@ -1,0 +1,30 @@
+id: remote-sleeper-rug-pull
+title: Remote Sleeper Rug Pull (Tool Metadata Drift)
+owasp:
+  - MCP03
+  - MCP04
+mode_support:
+  - vulnerable
+  - defended
+requires_network: false
+uses_real_secrets: false
+safe_mode: true
+entrypoint: /mcp/sleeper-rug-pull
+expected_vulnerable_result: sandbox_file_records_metadata_drift_and_unwanted_mock_action
+expected_defended_result: hash_diff_blocks_until_re_approval
+mitigations:
+  - tool_metadata_drift_policy
+  - description_hash_pinning
+  - schema_hash_pinning
+  - re_consent_on_drift
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+impact:
+  vulnerable:
+    type: sandbox_file_written
+    artifact: sandbox/effects/rug-pull-<session>.json
+    user_visible: tool_silently_changed_after_reload
+  defended:
+    type: blocked_attempt_recorded
+    artifact: var/telemetry.jsonl
+    user_visible: hash_diff_required_re_approval

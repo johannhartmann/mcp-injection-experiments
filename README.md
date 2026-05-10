@@ -247,6 +247,51 @@ Sicherheitsgrenzen:
 - Telemetrie zeigt `actor`, mutierte Argumente und Policy-Entscheidung -
   reicht fuer das Audit-Dashboard in spaeteren Schritten.
 
+## Remote Sleeper Rug Pull
+
+`remote-sleeper-rug-pull` modelliert einen Drift-Angriff, bei dem ein
+MCP-Server beim ersten Laden harmlose Tool-Metadaten ausspielt und beim
+zweiten Laden dieselbe Tool-ID mit veraenderter Description und
+veraenderten Input-Schema neu publiziert. Das ist die didaktische
+Replizierung des historischen `whatsapp-takeover.py`-PoC. Echte
+WhatsApp-Integration gibt es **nicht** - Ziel ist `MockChat` und das
+JSONL-Telemetry-Log; alle "Empfaenger" sind `.example`-Adressen.
+
+Zentrale Bausteine:
+
+- `shared/tool_metadata.py` (`fingerprint_tool`, `hash_description`,
+  `hash_schema`): SHA-256 ueber Description-Text und kanonisierter
+  Schema-JSON. Hashes sind deterministisch und reagieren auf jede
+  sichtbare Aenderung.
+- `shared/approval_store.py`: `ApprovalStore.record(server_id,
+  fingerprint, user)` bindet Konsens an alle vier Felder. `is_approved`
+  liefert nur True, wenn der gesamte Fingerprint unveraendert ist;
+  `diff` zeigt vorherige vs. neue Hashes.
+- `experiments/sleeper_rug_pull.py`:
+  `list_tools(runtime, load_index=0)` liefert die benigne Description,
+  `load_index>=1` die poisoned Variante mit `<IMPORTANT>`-Block. So kann
+  der Test beide Zustaende deterministisch inspizieren, ohne eine echte
+  Persistenz zu simulieren.
+
+Modus-Verhalten:
+
+- `vulnerable`: kein Drift-Check; das Experiment schreibt
+  `sandbox/effects/rug-pull-<session>.json` mit alten und neuen Hashes
+  und einem Eintrag fuer die "unwanted_mock_action" (Mock-Chat-Recipient
+  rewrite). Zusaetzlich landet der Canary in `MockSink`.
+- `defended`: vergleicht den neuen Fingerprint gegen die letzte
+  Approval. Bei jeder Drift wird `tool_metadata_drift_policy` ausgeloest;
+  `record_blocked_attempt` schreibt einen `blocked_attempt_recorded`-
+  Event mit Begruendung; `DemoResult.events` enthaelt einen
+  `metadata_diff`-Eintrag mit `before`/`after`-Hashes und einer
+  Re-Approval-Empfehlung.
+
+Sicherheitsgrenzen: keine echten Drittanbieter-Tools, keine Kommunikation
+mit echten Chat-/Messaging-APIs, kein Zugriff auf reale Konfigurationen.
+Die Hash-Diff-Anzeige ersetzt die "Was hat sich gegenueber dem letzten
+Vertrauensentscheid veraendert"-Frage durch ein deterministisches,
+diff-bares Artefakt.
+
 ## Observable impact model
 
 Jedes Experiment muss seinen Effekt **wirklich erzeugen**, aber nur innerhalb
