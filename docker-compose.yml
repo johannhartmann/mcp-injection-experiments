@@ -1,0 +1,33 @@
+services:
+  mcp-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-demo:dev
+    container_name: mcp-demo
+    # Local-development binding only. When putting this behind a public
+    # reverse proxy, do not publish the port to 0.0.0.0 directly; serve via
+    # the proxy and set DEMO_PUBLIC_MODE=true with hardened settings.
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DEMO_BIND_HOST: "0.0.0.0"
+      DEMO_BIND_PORT: "8000"
+      DEMO_ALLOWED_ORIGINS: "http://127.0.0.1:8000,http://localhost:8000"
+      DEMO_ADMIN_TOKEN: "${DEMO_ADMIN_TOKEN:-local-dev}"
+      DEMO_EGRESS_MODE: "deny"
+      DEMO_ENABLE_LOCAL_CALC_PROOF: "false"
+    read_only: true
+    tmpfs:
+      - /app/var
+      - /app/sandbox/effects
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;\nimport json;\nresp=urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3);\nbody=json.loads(resp.read());\nsys.exit(0 if body.get('status')=='ok' else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3

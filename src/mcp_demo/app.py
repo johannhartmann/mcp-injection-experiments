@@ -86,11 +86,14 @@ def create_app(
     registry: ExperimentRegistry | None = None,
 ) -> FastAPI:
     settings = settings or DemoSettings()
+    if settings.public_mode:
+        settings.validate_for_public_mode()
     registry = registry or ExperimentRegistry.from_directory(_default_manifest_dir())
 
     app = FastAPI(
         title=settings.server_name,
         version=settings.server_version,
+        debug=False,
     )
     app.state.settings = settings
     app.state.registry = registry
@@ -221,6 +224,7 @@ def create_app(
             scenario_runners=scenario_runners,
             telemetry_view=app.state.telemetry,
             admin_token=settings.admin_token,
+            registry=registry,
         )
     )
 

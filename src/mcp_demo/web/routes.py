@@ -22,6 +22,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.shared.results import DemoResult
 from mcp_demo.shared.telemetry import TelemetryView
 
@@ -75,13 +76,85 @@ def _render_html_events(events: list[dict[str, Any]]) -> str:
     )
 
 
+def _render_index(registry: ExperimentRegistry) -> str:
+    cards: list[str] = []
+    for manifest in registry.all():
+        impact_rows: list[str] = []
+        if manifest.impact is not None:
+            for label, descriptor in (
+                ("vulnerable", manifest.impact.vulnerable),
+                ("defended", manifest.impact.defended),
+            ):
+                if descriptor is None:
+                    continue
+                impact_rows.append(
+                    f"<li><strong>{label}:</strong> "
+                    f"<code>{descriptor.artifact}</code> &mdash; "
+                    f"{descriptor.user_visible}</li>"
+                )
+        impact_block = (
+            "<h4>Observable Impact</h4><ul>"
+            + "".join(impact_rows)
+            + "</ul>"
+            if impact_rows
+            else ""
+        )
+        owasp = ", ".join(manifest.owasp)
+        action = f"/demo/scenario/{manifest.id}"
+        cards.append(
+            f"<section class='card' data-experiment='{manifest.id}'>"
+            f"<h2>{manifest.title}</h2>"
+            f"<p class='id'><code>{manifest.id}</code></p>"
+            f"<p class='owasp'>OWASP: {owasp}</p>"
+            f"<form method='post' action='{action}' "
+            f"data-mode='vulnerable' data-action-mode='mode=vulnerable'>"
+            f"<button type='submit' name='mode' value='vulnerable'>"
+            f"Run vulnerable</button></form>"
+            f"<form method='post' action='{action}' "
+            f"data-mode='defended' data-action-mode='mode=defended'>"
+            f"<button type='submit' name='mode' value='defended'>"
+            f"Run defended</button></form>"
+            f"{impact_block}"
+            f"</section>"
+        )
+    body = "".join(cards) or "<p><em>no experiments registered</em></p>"
+    return (
+        "<!doctype html><html><head><title>MCP Demo</title>"
+        "<style>"
+        "body{font-family:system-ui;margin:1.5rem;max-width:1100px;}"
+        ".card{border:1px solid #ddd;border-radius:6px;padding:1rem;"
+        "margin-bottom:1rem;}"
+        ".card h2{margin-top:0;}"
+        ".card .id, .card .owasp{color:#555;font-size:0.85rem;margin:0.2rem 0;}"
+        "form{display:inline-block;margin-right:0.5rem;}"
+        "button{padding:0.4rem 0.8rem;border:1px solid #888;border-radius:4px;"
+        "cursor:pointer;}"
+        "ul{margin:0.4rem 0 0 1.2rem;font-size:0.9rem;}"
+        "</style></head><body>"
+        "<h1>MCP Demo Experiments</h1>"
+        "<p>Each experiment exposes a <em>vulnerable</em> and a "
+        "<em>defended</em> mode. The full event timeline lives at "
+        "<a href='/demo/events'>/demo/events</a>.</p>"
+        f"{body}"
+        "</body></html>"
+    )
+
+
 def build_demo_router(
     *,
     scenario_runners: dict[str, Callable[[str, str], DemoResult]],
     telemetry_view: TelemetryView,
     admin_token: str,
+    registry: ExperimentRegistry,
 ) -> APIRouter:
     router = APIRouter(prefix="/demo")
+
+    @router.get("")
+    @router.get("/")
+    async def index(request: Request) -> Response:
+        if not _origin_ok(request):
+            return _forbidden("origin not allowlisted")
+        return HTMLResponse(_render_index(registry))
 
     @router.post("/scenario/{experiment_id}")
     async def run_scenario(experiment_id: str, request: Request) -> Response:
