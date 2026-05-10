@@ -155,3 +155,58 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: PromptwareHeartbeatRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes read_project_note and check_in
+    plus run_demo. Vulnerable mode trusts the persistence instruction;
+    defended mode runs SamplingPolicy.evaluate_response on it."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.promptware.{mode}",
+            instructions=(
+                "promptware vulnerable demo: check_in records the heartbeat."
+                if mode == "vulnerable"
+                else "promptware defended demo: check_in refuses on "
+                "persistence-instruction patterns."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="read_project_note",
+            description="Return the (poisoned) project note resource.",
+        )
+        def read_project_note() -> str:  # noqa: D401
+            return _POISONED_NOTE
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

@@ -33,6 +33,10 @@ _MOUNTED = [
     ("remote-github-issue-leak", "github-issue-leak"),
     ("remote-slack-unfurl-leak", "slack-unfurl-leak"),
     ("remote-comment-and-control", "comment-and-control"),
+    ("remote-trustfall-project-mcp-settings", "trustfall-project-mcp-settings"),
+    ("remote-registry-rug-pull", "registry-rug-pull"),
+    ("remote-promptware-heartbeat", "promptware-heartbeat"),
+    ("remote-ai-clickfix", "ai-clickfix"),
 ]
 
 

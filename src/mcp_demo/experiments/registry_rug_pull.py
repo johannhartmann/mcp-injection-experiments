@@ -263,3 +263,54 @@ def run_scenario(
         blocked_by=[],
         events=[],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: RegistryRugPullRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes resolve_latest and activate_version
+    plus run_demo. Vulnerable mode silently activates latest; defended
+    mode honours the user pin."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.registry-rug-pull.{mode}",
+            instructions=(
+                "registry-rug-pull vulnerable demo: activate_version "
+                "silently activates 'latest'."
+                if mode == "vulnerable"
+                else "registry-rug-pull defended demo: activate_version "
+                "honours the user-pinned version and refuses on drift."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            if mode == "defended":
+                runtime.pin(server_id=runtime.server_id, version="1.0.0")
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

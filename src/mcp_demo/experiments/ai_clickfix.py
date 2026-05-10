@@ -144,3 +144,81 @@ def run_scenario(
             }
         ],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: AiClickFixRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes read_support_page and
+    run_repair plus run_demo. Vulnerable mode runs the bounded proof
+    primitive on any caller's request; defended mode refuses calls
+    whose source argument starts with untrusted_."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.ai-clickfix.{mode}",
+            instructions=(
+                "ai-clickfix vulnerable demo: run_repair runs on any caller."
+                if mode == "vulnerable"
+                else "ai-clickfix defended demo: run_repair refuses on "
+                "untrusted_web sources."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="read_support_page",
+            description="Return the (cloaked) support page HTML.",
+        )
+        def read_support_page() -> str:  # noqa: D401
+            return _SUPPORT_PAGE_HTML
+
+        @server.tool(
+            name="run_repair",
+            description=(
+                "Run the bounded ImpactRunner repair proof. Defended mode "
+                "refuses if 'source' starts with 'untrusted_'."
+            ),
+        )
+        def run_repair(
+            session_id: str = f"mcp-{mode}",
+            source: str = "untrusted_web",
+        ) -> dict:  # noqa: D401
+            if mode == "defended" and source.startswith("untrusted_"):
+                raise ValueError(
+                    "refused: untrusted webpage cannot trigger system actions"
+                )
+            artifact = runtime.runner.write_sandbox_file(
+                relative_name=f"clickfix-proof-{session_id}.txt",
+                canary=runtime.canary,
+                session_id=session_id,
+            )
+            return {"ran": True, "artifact": str(artifact)}
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

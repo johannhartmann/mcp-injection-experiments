@@ -68,6 +68,7 @@ from mcp_demo.experiments.mcp_remote_auth_endpoint_injection import (
 )
 from mcp_demo.experiments.trustfall_project_mcp_settings import (
     build_default_runtime as build_trustfall_runtime,
+    build_mcp_servers as build_trustfall_mcp_servers,
     run_scenario as run_trustfall_scenario,
 )
 from mcp_demo.experiments.cross_agent_config_priv_esc import (
@@ -77,10 +78,12 @@ from mcp_demo.experiments.cross_agent_config_priv_esc import (
 )
 from mcp_demo.experiments.promptware_heartbeat import (
     build_default_runtime as build_promptware_runtime,
+    build_mcp_servers as build_promptware_mcp_servers,
     run_scenario as run_promptware_scenario,
 )
 from mcp_demo.experiments.ai_clickfix import (
     build_default_runtime as build_clickfix_runtime,
+    build_mcp_servers as build_clickfix_mcp_servers,
     run_scenario as run_clickfix_scenario,
 )
 from mcp_demo.experiments.implicit_tool_poisoning import (
@@ -121,6 +124,7 @@ from mcp_demo.experiments.git_filesystem_chain_safe import (
 from mcp_demo.experiments.registry import ExperimentRegistry
 from mcp_demo.experiments.registry_rug_pull import (
     build_default_runtime as build_registry_rug_pull_runtime,
+    build_mcp_servers as build_registry_rug_pull_mcp_servers,
     run_scenario as run_registry_rug_pull_scenario,
 )
 from mcp_demo.experiments.sleeper_rug_pull import (
@@ -277,6 +281,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-registry-rug-pull",
+            build_registry_rug_pull_mcp_servers,
+            rt,
+        )
 
     if "remote-trustfall-project-mcp-settings" in registry:
         rt = build_trustfall_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -286,6 +295,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_trustfall_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-trustfall-project-mcp-settings",
+            build_trustfall_mcp_servers,
+            rt,
         )
 
     if "remote-cross-session-context-leak" in registry:
@@ -327,6 +341,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-promptware-heartbeat",
+            build_promptware_mcp_servers,
+            rt,
+        )
 
     if "remote-ai-clickfix" in registry:
         rt = build_clickfix_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -336,6 +355,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_clickfix_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-ai-clickfix",
+            build_clickfix_mcp_servers,
+            rt,
         )
 
     if "remote-implicit-tool-poisoning" in registry:
