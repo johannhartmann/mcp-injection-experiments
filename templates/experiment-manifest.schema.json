@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MCP Demo Experiment Manifest",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "owasp",
+    "mode_support",
+    "requires_network",
+    "uses_real_secrets",
+    "safe_mode",
+    "entrypoint",
+    "expected_vulnerable_result",
+    "expected_defended_result"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "owasp": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^MCP[0-9]{2}$"
+      }
+    },
+    "mode_support": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "vulnerable",
+          "defended"
+        ]
+      },
+      "minItems": 1
+    },
+    "requires_network": {
+      "type": "boolean"
+    },
+    "uses_real_secrets": {
+      "type": "boolean",
+      "const": false
+    },
+    "safe_mode": {
+      "type": "boolean",
+      "const": true
+    },
+    "entrypoint": {
+      "type": "string",
+      "pattern": "^/mcp/"
+    },
+    "expected_vulnerable_result": {
+      "type": "string"
+    },
+    "expected_defended_result": {
+      "type": "string"
+    },
+    "mitigations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "impact": {
+      "type": "object",
+      "properties": {
+        "vulnerable": {
+          "type": "object",
+          "required": [
+            "type",
+            "artifact",
+            "user_visible"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "mock_exfiltration",
+                "mock_message_sent",
+                "sandbox_file_written",
+                "session_leak_visible",
+                "permission_change_applied",
+                "budget_consumed",
+                "blocked_attempt_recorded"
+              ]
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "user_visible": {
+              "type": "string"
+            }
+          }
+        },
+        "defended": {
+          "type": "object",
+          "required": [
+            "type",
+            "artifact",
+            "user_visible"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "mock_exfiltration",
+                "mock_message_sent",
+                "sandbox_file_written",
+                "session_leak_visible",
+                "permission_change_applied",
+                "budget_consumed",
+                "blocked_attempt_recorded"
+              ]
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "user_visible": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}
