@@ -98,22 +98,27 @@ from mcp_demo.experiments.comment_and_control import (
 )
 from mcp_demo.experiments.agent_traps_hidden_html import (
     build_default_runtime as build_hidden_html_runtime,
+    build_mcp_servers as build_hidden_html_mcp_servers,
     run_scenario as run_hidden_html_scenario,
 )
 from mcp_demo.experiments.agent_traps_memory_poisoning import (
     build_default_runtime as build_memory_runtime,
+    build_mcp_servers as build_memory_mcp_servers,
     run_scenario as run_memory_scenario,
 )
 from mcp_demo.experiments.agent_traps_subagent_spawning import (
     build_default_runtime as build_subagent_runtime,
+    build_mcp_servers as build_subagent_mcp_servers,
     run_scenario as run_subagent_scenario,
 )
 from mcp_demo.experiments.agent_traps_approval_fatigue import (
     build_default_runtime as build_approval_runtime,
+    build_mcp_servers as build_approval_mcp_servers,
     run_scenario as run_approval_scenario,
 )
 from mcp_demo.experiments.agent_traps_sybil_and_fragments import (
     build_default_runtime as build_sybil_runtime,
+    build_mcp_servers as build_sybil_mcp_servers,
     run_scenario as run_sybil_scenario,
 )
 from mcp_demo.experiments.git_filesystem_chain_safe import (
@@ -399,6 +404,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-agent-traps-hidden-html",
+            build_hidden_html_mcp_servers,
+            rt,
+        )
 
     if "remote-agent-traps-memory-poisoning" in registry:
         rt = build_memory_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -408,6 +418,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_memory_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-agent-traps-memory-poisoning",
+            build_memory_mcp_servers,
+            rt,
         )
 
     if "remote-agent-traps-subagent-spawning" in registry:
@@ -419,6 +434,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-agent-traps-subagent-spawning",
+            build_subagent_mcp_servers,
+            rt,
+        )
 
     if "remote-agent-traps-approval-fatigue" in registry:
         rt = build_approval_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -429,6 +449,11 @@ def create_app(
                 mode=mode, session_id=sid, runtime=_rt
             )
         )
+        _mount_mcp(
+            "remote-agent-traps-approval-fatigue",
+            build_approval_mcp_servers,
+            rt,
+        )
 
     if "remote-agent-traps-sybil-and-fragments" in registry:
         rt = build_sybil_runtime(sandbox_dir=sandbox_dir, var_dir=var_dir)
@@ -438,6 +463,11 @@ def create_app(
             lambda mode, sid, _rt=rt: run_sybil_scenario(
                 mode=mode, session_id=sid, runtime=_rt
             )
+        )
+        _mount_mcp(
+            "remote-agent-traps-sybil-and-fragments",
+            build_sybil_mcp_servers,
+            rt,
         )
 
     if "remote-git-filesystem-chain-safe" in registry:

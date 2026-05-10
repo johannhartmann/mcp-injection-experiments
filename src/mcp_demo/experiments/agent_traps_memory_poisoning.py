@@ -218,3 +218,54 @@ def run_scenario(
             }
         ],
     )
+
+
+# --- MCP servers (one per mode) ------------------------------------------
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from mcp_demo.shared.mcp_helpers import make_fastmcp  # noqa: E402
+
+
+def build_mcp_servers(
+    *,
+    runtime: MemoryPoisoningRuntime,
+    server_name: str,
+    server_version: str,  # noqa: ARG001
+    allowed_origins: tuple[str, ...] = (),
+) -> dict[str, FastMCP]:
+    """Two real MCP servers. Each exposes store_memory and recall_memory
+    plus run_demo. Vulnerable store_memory has no provenance fields;
+    defended store_memory tags entries as untrusted, so recall_memory
+    refuses to use them for tool choice."""
+
+    def _build(*, mode: Literal["vulnerable", "defended"]) -> FastMCP:
+        server = make_fastmcp(
+            name=f"{server_name}.memory-poisoning.{mode}",
+            instructions=(
+                "memory-poisoning vulnerable demo: store_memory ignores "
+                "provenance."
+                if mode == "vulnerable"
+                else "memory-poisoning defended demo: store_memory tags "
+                "untrusted entries; recall_memory refuses them for tool "
+                "choice."
+            ),
+            allowed_origins=allowed_origins,
+        )
+
+        @server.tool(
+            name="run_demo",
+            description="Run the canonical scenario and return DemoResult.",
+        )
+        def run_demo(session_id: str = f"mcp-{mode}") -> dict:  # noqa: D401
+            result = run_scenario(
+                mode=mode, session_id=session_id, runtime=runtime
+            )
+            return result.model_dump()
+
+        return server
+
+    return {
+        "vulnerable": _build(mode="vulnerable"),
+        "defended": _build(mode="defended"),
+    }

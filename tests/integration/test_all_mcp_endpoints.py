@@ -37,7 +37,29 @@ _MOUNTED = [
     ("remote-registry-rug-pull", "registry-rug-pull"),
     ("remote-promptware-heartbeat", "promptware-heartbeat"),
     ("remote-ai-clickfix", "ai-clickfix"),
+    ("remote-agent-traps-hidden-html", "agent-traps-hidden-html"),
+    ("remote-agent-traps-memory-poisoning", "agent-traps-memory-poisoning"),
+    ("remote-agent-traps-subagent-spawning", "agent-traps-subagent-spawning"),
+    ("remote-agent-traps-approval-fatigue", "agent-traps-approval-fatigue"),
+    ("remote-agent-traps-sybil-and-fragments", "agent-traps-sybil-and-fragments"),
 ]
+
+
+def test_every_registered_experiment_is_in_the_mounted_list() -> None:
+    """All 25 experiments now have a real MCP server. Catch regressions
+    if a future commit adds an experiment manifest without the
+    corresponding build_mcp_servers."""
+
+    from mcp_demo.app import create_app
+
+    app = create_app()
+    expected = {f"/mcp/{slug}/{mode}" for _, slug in _MOUNTED for mode in ("vulnerable", "defended")}
+    mounted_paths = {
+        getattr(r, "path", "")
+        for r in app.router.routes
+    }
+    missing = expected - mounted_paths
+    assert not missing, f"missing mount paths: {sorted(missing)}"
 
 
 @pytest.fixture
