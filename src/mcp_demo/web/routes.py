@@ -76,83 +76,424 @@ def _render_html_events(events: list[dict[str, Any]]) -> str:
     )
 
 
+# Human labels for OWASP MCP Top 10 codes. Sourced from
+# docs/owasp-mcp-coverage.md. Any code not in this map falls back to
+# rendering the bare code, so adding a new MCP code degrades gracefully
+# instead of crashing.
+_OWASP_LABELS: dict[str, str] = {
+    "MCP01": "Token Mismanagement and Secret Exposure",
+    "MCP02": "Privilege Escalation via Scope Creep",
+    "MCP03": "Tool Poisoning",
+    "MCP04": "Supply Chain Attacks",
+    "MCP05": "Command Injection and Execution",
+    "MCP06": "Contextual Injection",
+    "MCP07": "Insufficient AuthN/AuthZ",
+    "MCP08": "Lack of Audit and Telemetry",
+    "MCP09": "Shadow MCP Servers",
+    "MCP10": "Context Injection and Over-Sharing",
+}
+
+def _impact_block(manifest: Any) -> str:
+    rows: list[str] = []
+    if manifest.impact is not None:
+        for label, descriptor in (
+            ("vulnerable", manifest.impact.vulnerable),
+            ("defended", manifest.impact.defended),
+        ):
+            if descriptor is None:
+                continue
+            rows.append(
+                f"<li><strong>{label}:</strong> "
+                f"<code>{descriptor.artifact}</code> &mdash; "
+                f"{descriptor.user_visible}</li>"
+            )
+    if not rows:
+        return ""
+    return "<h4>Observable Impact</h4><ul>" + "".join(rows) + "</ul>"
+
+
+def _card_html(manifest: Any) -> str:
+    import html as _html
+
+    action = f"/demo/scenario/{manifest.id}"
+    compare_href = f"/demo/compare/{manifest.id}"
+    slug = manifest.id.removeprefix("remote-")
+    owasp = ", ".join(manifest.owasp)
+    user_task_attr = (
+        f"data-user-task='{_html.escape(manifest.user_task, quote=True)}' "
+        if getattr(manifest, "user_task", None)
+        else ""
+    )
+    return (
+        f"<section class='card' data-experiment='{manifest.id}' "
+        f"data-slug='{slug}' {user_task_attr}>"
+        f"<h2>{manifest.title}</h2>"
+        f"<p class='id'><code>{manifest.id}</code></p>"
+        f"<p class='owasp'>OWASP: {owasp}</p>"
+        f"<div class='run-bar'>"
+        f"<form method='post' action='{action}' "
+        f"data-mode='vulnerable' data-action-mode='mode=vulnerable'>"
+        f"<button type='submit' name='mode' value='vulnerable'>"
+        f"Run vulnerable</button></form>"
+        f"<form method='post' action='{action}' "
+        f"data-mode='defended' data-action-mode='mode=defended'>"
+        f"<button type='submit' name='mode' value='defended'>"
+        f"Run defended</button></form>"
+        f"<a class='compare-link' href='{compare_href}'>"
+        f"Compare side-by-side &rarr;</a>"
+        f"</div>"
+        f"<div class='agent-bar' hidden></div>"
+        f"<div class='agent-result' hidden></div>"
+        f"{_impact_block(manifest)}"
+        f"</section>"
+    )
+
+
+def _grouped_sections(manifests: list[Any]) -> str:
+    """Render the remaining (non-hero) cards as collapsible buckets
+    keyed by primary OWASP code, so a visitor scans 7 group titles
+    instead of 24 raw cards."""
+
+    buckets: dict[str, list[Any]] = {}
+    for manifest in manifests:
+        primary = manifest.owasp[0] if manifest.owasp else "(uncategorised)"
+        buckets.setdefault(primary, []).append(manifest)
+
+    parts: list[str] = []
+    for code in sorted(buckets):
+        label = _OWASP_LABELS.get(code, "")
+        title = f"{code} &mdash; {label}" if label else code
+        cards = "".join(_card_html(m) for m in buckets[code])
+        parts.append(
+            "<details class='group'>"
+            f"<summary><strong>{title}</strong> "
+            f"<span class='group-count'>({len(buckets[code])})</span></summary>"
+            f"<div class='group-body'>{cards}</div>"
+            "</details>"
+        )
+    return "".join(parts)
+
+
+def _external_clients_section(
+    *, example_manifest: Any | None, base_url: str
+) -> str:
+    """Single bottom section that surfaces the raw MCP endpoints once,
+    instead of repeating the Inspector deep-link block on every card.
+
+    Tests assert that ``Open in MCP Inspector``, the launch command and
+    the ``remote-direct-poisoning`` per-mode URLs all appear on the
+    index page; this section is the one place that provides them."""
+
+    if example_manifest is None:
+        return ""
+    slug = example_manifest.id.removeprefix("remote-")
+    mcp_v_url = f"{base_url}/mcp/{slug}/vulnerable/"
+    mcp_d_url = f"{base_url}/mcp/{slug}/defended/"
+    return (
+        "<details class='external-clients'>"
+        "<summary>Open in MCP Inspector (use these endpoints from an "
+        "external MCP client)</summary>"
+        "<p>The demo exposes 50 raw Streamable-HTTP MCP endpoints "
+        "(25 experiments &times; vulnerable + defended). Launch a local "
+        "Inspector instance:</p>"
+        "<pre><code>npx @modelcontextprotocol/inspector</code></pre>"
+        "<p>Each <code>/demo/compare/&lt;id&gt;</code> page lists its own "
+        f"per-mode URLs. Example for <code>{example_manifest.id}</code>:</p>"
+        "<ul class='inspector-urls'>"
+        f"<li><strong>vulnerable:</strong> "
+        f"<code class='copy' data-copy='{mcp_v_url}'>{mcp_v_url}</code> "
+        f"<button type='button' class='copy-btn' "
+        f"data-copy-target='{mcp_v_url}'>copy</button></li>"
+        f"<li><strong>defended:</strong> "
+        f"<code class='copy' data-copy='{mcp_d_url}'>{mcp_d_url}</code> "
+        f"<button type='button' class='copy-btn' "
+        f"data-copy-target='{mcp_d_url}'>copy</button></li>"
+        "</ul>"
+        "</details>"
+    )
+
+
+# Inline JavaScript for the dashboard. One module so the <script> tag
+# stays a single block and so the live-feed renderer (which interpolates
+# server-controlled telemetry strings into DOM) is built with
+# textContent / createTextNode throughout, not innerHTML concatenation.
+_DASHBOARD_JS = r"""
+(function () {
+  'use strict';
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        if (k === 'class') node.className = attrs[k];
+        else if (k === 'text') node.textContent = attrs[k];
+        else node.setAttribute(k, attrs[k]);
+      }
+    }
+    if (children) {
+      for (var i = 0; i < children.length; i++) {
+        var c = children[i];
+        if (c == null) continue;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      }
+    }
+    return node;
+  }
+
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function setStatus(kind, text) {
+    var status = document.getElementById('agent-status');
+    if (!status) return;
+    status.className = 'agent-status ' + kind;
+    status.textContent = text;
+    status.hidden = false;
+  }
+
+  async function fetchAgentStatus() {
+    var resp = await fetch('/demo/agent/status', {
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    });
+    return await resp.json();
+  }
+
+  function renderTranscript(resultDiv, payload) {
+    clear(resultDiv);
+    resultDiv.hidden = false;
+
+    function block(label, body, klass) {
+      var w = el('div', { class: 'agent-step' });
+      w.appendChild(el('h4', klass ? { class: klass } : {}, [label]));
+      w.appendChild(body);
+      return w;
+    }
+
+    if (payload.error) {
+      resultDiv.appendChild(block('Error', el('pre', { text: payload.error }), 'agent-bad'));
+      return;
+    }
+
+    var head = (payload.model || 'gemini') + ' · task: ' + (payload.user_task || '');
+    resultDiv.appendChild(block('Model', el('div', { text: head })));
+
+    var steps = payload.steps || [];
+    for (var i = 0; i < steps.length; i++) {
+      var s = steps[i];
+      var isError = !!(s.result && s.result.isError);
+      var label = 'Step ' + (i + 1) + ': ' + s.tool;
+      var w = el('div', { class: 'agent-step' });
+      w.appendChild(el('h4', { class: isError ? 'agent-bad' : '' }, [label]));
+      w.appendChild(el('div', { text: 'arguments' }));
+      w.appendChild(el('pre', { text: JSON.stringify(s.args, null, 2) }));
+      w.appendChild(el('div', { text: 'result' }));
+      w.appendChild(el('pre', { text: JSON.stringify(s.result, null, 2) }));
+      resultDiv.appendChild(w);
+    }
+
+    if (steps.length === 0) {
+      resultDiv.appendChild(block(
+        'No tool calls',
+        el('div', { text: 'Model returned a direct text answer without calling any tool.' })
+      ));
+    }
+    if (payload.final_text) {
+      resultDiv.appendChild(block(
+        'Model final text', el('pre', { text: payload.final_text })
+      ));
+    }
+    if (payload.max_steps_reached) {
+      resultDiv.appendChild(block(
+        'Max steps reached',
+        el('div', { text: 'Loop bounded; the model would have continued past step ' + steps.length + '.' }),
+        'agent-bad'
+      ));
+    }
+    if (payload.experiment_id) {
+      resultDiv.appendChild(el('a', {
+        href: '/demo/compare/' + payload.experiment_id,
+        text: 'Open compare page for full telemetry →'
+      }));
+    }
+  }
+
+  async function runAgent(card, mode) {
+    var experimentId = card.getAttribute('data-experiment');
+    var resultDiv = card.querySelector('.agent-result');
+    var btns = card.querySelectorAll('.agent-bar button');
+    var userTask = card.getAttribute('data-user-task') || null;
+
+    for (var b = 0; b < btns.length; b++) btns[b].disabled = true;
+    clear(resultDiv);
+    resultDiv.hidden = false;
+    resultDiv.appendChild(el('div', {
+      class: 'agent-step',
+      text: 'Calling Gemini Flash Lite ...'
+    }));
+
+    try {
+      var resp = await fetch('/demo/agent/' + encodeURIComponent(experimentId), {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ mode: mode, user_task: userTask }),
+        credentials: 'same-origin'
+      });
+      var body;
+      try { body = await resp.json(); }
+      catch (_e) { body = { error: 'HTTP ' + resp.status + ' (no JSON body)' }; }
+      if (!resp.ok && !body.error) {
+        body = { error: 'HTTP ' + resp.status };
+      }
+      renderTranscript(resultDiv, body);
+    } catch (err) {
+      renderTranscript(resultDiv, {
+        error: String(err && err.message ? err.message : err)
+      });
+    } finally {
+      for (var b2 = 0; b2 < btns.length; b2++) btns[b2].disabled = false;
+    }
+  }
+
+  async function wireCards() {
+    var status;
+    try { status = await fetchAgentStatus(); }
+    catch (err) {
+      setStatus('warn',
+        'Could not check Gemini Flash Lite status: ' + String(err) +
+        '. The deterministic Python-simulator Run buttons above still work.');
+      return;
+    }
+    if (!status.enabled) {
+      setStatus('warn',
+        'Gemini Flash Lite (server) is disabled: ' + (status.reason || 'unknown') +
+        '. Set DEMO_GEMINI_ENABLED=1 and GEMINI_API_KEY to enable. The ' +
+        'deterministic Python-simulator Run buttons above still work.');
+      return;
+    }
+    setStatus('ok',
+      'Gemini Flash Lite (server) is available (' + (status.model || 'default') +
+      ', up to ' + (status.max_steps || 5) + ' steps). Click "Run with ' +
+      'Gemini Flash Lite" on any card to dispatch the real model against ' +
+      'the live MCP server.');
+
+    var cards = document.querySelectorAll('.card[data-slug]');
+    cards.forEach(function (card) {
+      var bar = card.querySelector('.agent-bar');
+      if (!bar) return;
+      bar.hidden = false;
+      bar.appendChild(el('span', { class: 'agent-label', text: 'Real model:' }));
+      ['vulnerable', 'defended'].forEach(function (mode) {
+        var btn = el('button', { type: 'button' }, [
+          'Run with Gemini Flash Lite (' + mode + ')'
+        ]);
+        btn.addEventListener('click', function () { runAgent(card, mode); });
+        bar.appendChild(btn);
+      });
+    });
+  }
+
+  function wireLiveFeed() {
+    var src = new EventSource('/demo/events/stream');
+    var list = document.getElementById('live-feed-list');
+    var hdr = document.querySelector('#live-feed header');
+    var counter = document.getElementById('live-feed-count');
+    if (!list || !hdr || !counter) return;
+    var n = 0;
+    src.addEventListener('ready', function () { hdr.classList.add('connected'); });
+    src.addEventListener('impact', function (ev) {
+      try {
+        var e = JSON.parse(ev.data);
+        var li = document.createElement('li');
+        if (e.policy_decision === 'blocked') li.className = 'warn';
+        var line1 = el('div', {}, [
+          el('strong', { text: String(e.impact_type || '') }),
+          ' ',
+          el('code', { text: String(e.actor || '') }),
+          ' → ',
+          el('code', { text: String(e.target || '') })
+        ]);
+        var line2 = el('small', {
+          text: String(e.policy_decision || '') + ' · ' + String(e.experiment || '')
+        });
+        li.appendChild(line1);
+        li.appendChild(el('br'));
+        li.appendChild(line2);
+        list.insertBefore(li, list.firstChild);
+        n += 1;
+        counter.textContent = String(n);
+        while (list.children.length > 50) list.removeChild(list.lastChild);
+      } catch (_err) { /* drop malformed event */ }
+    });
+  }
+
+  function wireCopy() {
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+      var v = btn.getAttribute('data-copy-target');
+      if (!v || !navigator.clipboard || !navigator.clipboard.writeText) return;
+      navigator.clipboard.writeText(v).then(function () {
+        btn.classList.add('copied');
+        btn.textContent = 'copied';
+        setTimeout(function () {
+          btn.classList.remove('copied');
+          btn.textContent = 'copy';
+        }, 1500);
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      wireLiveFeed(); wireCopy(); wireCards();
+    });
+  } else {
+    wireLiveFeed(); wireCopy(); wireCards();
+  }
+})();
+"""
+
+
 def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
-    """Render the experiment cards.
+    """Render the dashboard.
+
+    Layout: experiments grouped into collapsible buckets by primary
+    OWASP code, then a single bottom section with the launch
+    instructions for an external MCP Inspector (replacing the per-card
+    Inspector blocks the page used to repeat 25 times). When the server
+    has Gemini Flash Lite enabled (``DEMO_GEMINI_ENABLED=1`` +
+    ``GEMINI_API_KEY``), a client-side script injects a "Run with
+    Gemini Flash Lite" pair of buttons into each card alongside the
+    deterministic-simulator Run buttons.
 
     ``base_url`` is the absolute origin a real browser would see (e.g.
-    ``http://127.0.0.1:8000``). It is interpolated into the
-    "Open in Inspector" snippet on each card so users can copy the
-    URL of the running demo verbatim into a local
-    ``@modelcontextprotocol/inspector`` instance.
+    ``http://127.0.0.1:8000``). It is only interpolated into the bottom
+    "Open in MCP Inspector" section.
     """
 
     base_url = base_url.rstrip("/")
-    cards: list[str] = []
-    for manifest in registry.all():
-        impact_rows: list[str] = []
-        if manifest.impact is not None:
-            for label, descriptor in (
-                ("vulnerable", manifest.impact.vulnerable),
-                ("defended", manifest.impact.defended),
-            ):
-                if descriptor is None:
-                    continue
-                impact_rows.append(
-                    f"<li><strong>{label}:</strong> "
-                    f"<code>{descriptor.artifact}</code> &mdash; "
-                    f"{descriptor.user_visible}</li>"
-                )
-        impact_block = (
-            "<h4>Observable Impact</h4><ul>"
-            + "".join(impact_rows)
-            + "</ul>"
-            if impact_rows
-            else ""
-        )
-        owasp = ", ".join(manifest.owasp)
-        action = f"/demo/scenario/{manifest.id}"
-        compare_href = f"/demo/compare/{manifest.id}"
-        slug = manifest.id.removeprefix("remote-")
-        mcp_v_url = f"{base_url}/mcp/{slug}/vulnerable/"
-        mcp_d_url = f"{base_url}/mcp/{slug}/defended/"
-        inspector_block = (
-            "<details class='inspector'>"
-            "<summary>Open in MCP Inspector</summary>"
-            "<p>Launch a local Inspector instance and paste one of the "
-            "URLs below as a Streamable HTTP server:</p>"
-            "<pre><code>npx @modelcontextprotocol/inspector</code></pre>"
-            "<ul class='inspector-urls'>"
-            f"<li><strong>vulnerable:</strong> "
-            f"<code class='copy' data-copy='{mcp_v_url}'>{mcp_v_url}</code> "
-            f"<button type='button' class='copy-btn' "
-            f"data-copy-target='{mcp_v_url}'>copy</button></li>"
-            f"<li><strong>defended:</strong> "
-            f"<code class='copy' data-copy='{mcp_d_url}'>{mcp_d_url}</code> "
-            f"<button type='button' class='copy-btn' "
-            f"data-copy-target='{mcp_d_url}'>copy</button></li>"
-            "</ul>"
-            "</details>"
-        )
-        cards.append(
-            f"<section class='card' data-experiment='{manifest.id}'>"
-            f"<h2>{manifest.title}</h2>"
-            f"<p class='id'><code>{manifest.id}</code></p>"
-            f"<p class='owasp'>OWASP: {owasp}</p>"
-            f"<form method='post' action='{action}' "
-            f"data-mode='vulnerable' data-action-mode='mode=vulnerable'>"
-            f"<button type='submit' name='mode' value='vulnerable'>"
-            f"Run vulnerable</button></form>"
-            f"<form method='post' action='{action}' "
-            f"data-mode='defended' data-action-mode='mode=defended'>"
-            f"<button type='submit' name='mode' value='defended'>"
-            f"Run defended</button></form>"
-            f"<a class='compare-link' href='{compare_href}'>"
-            f"Compare side-by-side &rarr;</a>"
-            f"{inspector_block}"
-            f"{impact_block}"
-            f"</section>"
-        )
-    body = "".join(cards) or "<p><em>no experiments registered</em></p>"
+    all_manifests = list(registry.all())
+    grouped = (
+        _grouped_sections(all_manifests)
+        if all_manifests
+        else "<p><em>no experiments registered</em></p>"
+    )
+    example = next(
+        (m for m in all_manifests if m.id == "remote-direct-poisoning"),
+        all_manifests[0] if all_manifests else None,
+    )
+
+    body = (
+        f"<section class='groups'>"
+        f"<h2>All experiments by OWASP MCP Top 10 family</h2>"
+        f"{grouped}"
+        f"</section>"
+        f"{_external_clients_section(example_manifest=example, base_url=base_url)}"
+    )
     return (
         "<!doctype html><html><head><title>MCP Demo</title>"
         "<style>"
@@ -169,6 +510,55 @@ def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
         "border:1px solid #cde;border-radius:4px;background:#eef6ff;"
         "font-size:0.85rem;}"
         ".compare-link:hover{background:#dceaff;}"
+        ".run-bar{display:flex;flex-wrap:wrap;align-items:center;gap:0.3rem;}"
+        ".agent-bar{display:flex;flex-wrap:wrap;gap:0.3rem;"
+        "margin-top:0.5rem;padding-top:0.5rem;border-top:1px dashed #e0e0e0;}"
+        ".agent-bar button{background:#eef6ff;border-color:#246;color:#103452;"
+        "font-weight:600;}"
+        ".agent-bar button:hover:not(:disabled){background:#dceaff;}"
+        ".agent-bar button:disabled{opacity:0.6;cursor:wait;}"
+        ".agent-bar .agent-label{font-size:0.75rem;color:#555;"
+        "margin-right:0.4rem;align-self:center;}"
+        ".agent-result{margin-top:0.6rem;padding:0.6rem 0.8rem;"
+        "background:#f7f9fc;border:1px solid #d8dde6;border-radius:4px;"
+        "font-size:0.82rem;}"
+        ".agent-result h4{margin:0.2rem 0;font-size:0.78rem;color:#555;"
+        "text-transform:uppercase;letter-spacing:0.04em;}"
+        ".agent-result pre{margin:0.2rem 0;padding:0.3rem 0.5rem;"
+        "background:#fff;border:1px solid #e2e6ed;border-radius:3px;"
+        "font-size:0.76rem;white-space:pre-wrap;word-break:break-word;}"
+        ".agent-result .agent-step{margin-bottom:0.5rem;}"
+        ".agent-result .agent-bad{color:#b91c1c;font-weight:600;}"
+        ".agent-result .agent-good{color:#047857;font-weight:600;}"
+        ".agent-status{padding:0.5rem 0.8rem;margin:0.6rem 0 1rem 0;"
+        "border-radius:4px;font-size:0.85rem;}"
+        ".agent-status.ok{background:#dcfce7;color:#064;"
+        "border:1px solid #6c7;}"
+        ".agent-status.warn{background:#fff8eb;color:#603a06;"
+        "border:1px solid #f3c478;}"
+        ".agent-status.err{background:#fee2e2;color:#611;"
+        "border:1px solid #f99;}"
+        ".groups h2{font-size:1rem;margin:1.6rem 0 0.6rem 0;color:#555;}"
+        "details.group{margin-bottom:0.4rem;border:1px solid #ddd;"
+        "border-radius:6px;background:#fafafa;}"
+        "details.group>summary{cursor:pointer;padding:0.55rem 0.9rem;"
+        "font-size:0.92rem;color:#333;list-style:none;}"
+        "details.group>summary::-webkit-details-marker{display:none;}"
+        "details.group>summary::before{content:'\\25b6';display:inline-block;"
+        "width:1rem;color:#888;font-size:0.7rem;transition:transform 0.15s;}"
+        "details.group[open]>summary::before{transform:rotate(90deg);}"
+        "details.group .group-count{color:#888;font-size:0.85rem;}"
+        "details.group .group-body{padding:0.6rem 0.9rem 0.9rem;"
+        "background:#fff;border-top:1px solid #eee;}"
+        "details.group .card{margin-bottom:0.6rem;background:#fafbfd;"
+        "border-color:#e2e6ed;}"
+        "details.external-clients{margin-top:1.5rem;border:1px solid #ddd;"
+        "border-radius:6px;background:#fafafa;padding:0;}"
+        "details.external-clients>summary{cursor:pointer;padding:0.6rem 0.9rem;"
+        "color:#246;font-size:0.92rem;}"
+        "details.external-clients[open]>summary{border-bottom:1px solid #eee;}"
+        "details.external-clients p,details.external-clients pre,"
+        "details.external-clients ul{margin-left:0.9rem;margin-right:0.9rem;}"
         ".inspector{margin-top:0.6rem;font-size:0.85rem;}"
         ".inspector summary{cursor:pointer;color:#246;}"
         ".inspector pre{background:#f5f7fa;border:1px solid #e0e3e8;"
@@ -198,47 +588,26 @@ def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
         "#live-feed li code{font-size:0.7rem;color:#555;}"
         "</style></head><body>"
         "<h1>MCP Demo Experiments</h1>"
-        "<p>Each experiment exposes a <em>vulnerable</em> and a "
-        "<em>defended</em> mode. The full event timeline lives at "
+        "<p>25 MCP injection experiments grouped by OWASP MCP Top 10 "
+        "family. Every experiment exposes a <em>vulnerable</em> and a "
+        "<em>defended</em> mode. The <strong>Run</strong> buttons drive "
+        "a deterministic Python simulator of what an injected agent "
+        "would do. When <code>DEMO_GEMINI_ENABLED=1</code> and "
+        "<code>GEMINI_API_KEY</code> are set, every card also gets a "
+        "<strong>Run with Gemini Flash Lite</strong> pair that hosts a "
+        "real server-side <code>gemini-3.1-flash-lite</code> agent: it "
+        "lists the live MCP server's tools, lets the model pick tools + "
+        "args via native function calling, and dispatches each call "
+        "in-process against the same FastMCP instance (multi-step, "
+        "bounded). The full event timeline lives at "
         "<a href='/demo/events'>/demo/events</a>.</p>"
+        "<div id='agent-status' class='agent-status' hidden></div>"
         f"{body}"
         "<aside id='live-feed' aria-label='Live impact-event feed'>"
         "<header><span><span class='dot'></span>live impact events</span>"
         "<span id='live-feed-count'>0</span></header>"
         "<ol id='live-feed-list'></ol></aside>"
-        "<script>"
-        "(function(){"
-        "var src=new EventSource('/demo/events/stream');"
-        "var list=document.getElementById('live-feed-list');"
-        "var hdr=document.querySelector('#live-feed header');"
-        "var counter=document.getElementById('live-feed-count');"
-        "var n=0;"
-        "src.addEventListener('ready',function(){hdr.classList.add('connected');});"
-        "src.addEventListener('impact',function(ev){"
-        " var e=JSON.parse(ev.data);"
-        " var li=document.createElement('li');"
-        " if(e.policy_decision==='blocked'){li.className='warn';}"
-        " li.innerHTML='<strong>'+e.impact_type+'</strong> '"
-        " +'<code>'+e.actor+'</code> &rarr; <code>'+e.target+'</code>'"
-        " +'<br><small>'+e.policy_decision+' &middot; '+e.experiment+'</small>';"
-        " list.insertBefore(li,list.firstChild);"
-        " n+=1; counter.textContent=String(n);"
-        " while(list.children.length>50){list.removeChild(list.lastChild);}"
-        "});"
-        "})();"
-        "document.addEventListener('click',function(e){"
-        " var btn=e.target.closest('.copy-btn');"
-        " if(!btn) return;"
-        " var v=btn.getAttribute('data-copy-target');"
-        " if(navigator.clipboard&&navigator.clipboard.writeText){"
-        "  navigator.clipboard.writeText(v).then(function(){"
-        "   btn.classList.add('copied');btn.textContent='copied';"
-        "   setTimeout(function(){btn.classList.remove('copied');"
-        "    btn.textContent='copy';},1500);"
-        "  });"
-        " }"
-        "});"
-        "</script>"
+        f"<script>{_DASHBOARD_JS}</script>"
         "</body></html>"
     )
 
@@ -315,6 +684,109 @@ def build_demo_router(
                 url=f"/demo/compare/{experiment_id}", status_code=303
             )
         return JSONResponse(content=result.model_dump())
+
+    @router.get("/agent/status")
+    async def agent_status(request: Request) -> Response:
+        # Read-only feature-detect for the Flash Lite path. Browsers send
+        # no Origin on top-level GETs; reject only the explicit
+        # cross-origin case.
+        if request.headers.get("origin") and not _origin_ok(request):
+            return _forbidden("origin not allowlisted")
+        settings = request.app.state.settings
+        if not settings.gemini_enabled:
+            return JSONResponse(
+                {
+                    "enabled": False,
+                    "reason": "DEMO_GEMINI_ENABLED is off",
+                }
+            )
+        if not settings.gemini_api_key:
+            return JSONResponse(
+                {
+                    "enabled": False,
+                    "reason": "GEMINI_API_KEY is not set",
+                    "model": settings.gemini_model,
+                }
+            )
+        return JSONResponse(
+            {
+                "enabled": True,
+                "model": settings.gemini_model,
+                "max_steps": settings.gemini_max_steps,
+            }
+        )
+
+    @router.post("/agent/{experiment_id}")
+    async def run_agent_route(experiment_id: str, request: Request) -> Response:
+        if not _origin_ok(request):
+            return _forbidden("origin not allowlisted")
+        settings = request.app.state.settings
+        if not settings.gemini_enabled:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "gemini_disabled", "reason": "DEMO_GEMINI_ENABLED is off"},
+            )
+        if not settings.gemini_api_key:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "gemini_disabled", "reason": "GEMINI_API_KEY is not set"},
+            )
+        if experiment_id not in registry:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "unknown_experiment", "id": experiment_id},
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"error": "invalid_json"})
+        if not isinstance(body, dict):
+            return JSONResponse(status_code=400, content={"error": "invalid_json"})
+        mode = body.get("mode")
+        if mode not in {"vulnerable", "defended"}:
+            return JSONResponse(status_code=400, content={"error": "invalid_mode"})
+        session_id = body.get("session_id") or f"agent-{mode}-{experiment_id}"
+        user_task = body.get("user_task")
+
+        servers = request.app.state.mcp_servers_by_experiment.get(experiment_id, {})
+        server = servers.get(mode)
+        if server is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "mode_not_mounted", "mode": mode},
+            )
+        manifest = registry.get(experiment_id)
+        task = user_task or manifest.user_task or (
+            "Help me by calling one of the available tools with sensible arguments."
+        )
+
+        # Import here so the module loads cleanly when the gemini extra
+        # is absent (the route is reachable only when the operator
+        # explicitly opted in, so this import error means a misconfig
+        # and should surface as 503 not 500).
+        try:
+            from mcp_demo.web.agent_runner import run_agent
+        except ImportError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "gemini_extra_missing",
+                    "reason": str(exc),
+                },
+            )
+
+        result = await run_agent(
+            server=server,
+            user_task=task,
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            max_steps=settings.gemini_max_steps,
+        )
+        payload = result.to_dict()
+        payload["experiment_id"] = experiment_id
+        payload["mode"] = mode
+        payload["session_id"] = session_id
+        return JSONResponse(content=payload)
 
     @router.get("/events")
     async def list_events(request: Request) -> Response:

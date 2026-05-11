@@ -32,6 +32,16 @@ class DemoSettings:
     server_version: str = "0.0.1"
     admin_token: str = "local-dev"
     public_mode: bool = False
+    # Optional opt-in: server-side Gemini Flash Lite agent. When enabled,
+    # the dashboard exposes a "Run with Gemini Flash Lite" button per
+    # experiment which posts to /demo/agent/<id>; the route lists the
+    # live MCP tools, lets the model pick one via native function calling
+    # and dispatches the call in-process. Disabled by default because it
+    # makes a real outbound API call (the rest of the demo is mock-only).
+    gemini_enabled: bool = False
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_max_steps: int = 5
 
     @classmethod
     def from_env(cls) -> "DemoSettings":
@@ -47,6 +57,14 @@ class DemoSettings:
         public_mode = os.environ.get("DEMO_PUBLIC_MODE", "").lower() in {
             "1", "true", "yes",
         }
+        gemini_enabled = os.environ.get("DEMO_GEMINI_ENABLED", "").lower() in {
+            "1", "true", "yes",
+        }
+        gemini_api_key = os.environ.get("GEMINI_API_KEY") or None
+        gemini_model = os.environ.get(
+            "DEMO_GEMINI_MODEL", "gemini-3.1-flash-lite"
+        )
+        gemini_max_steps = int(os.environ.get("DEMO_GEMINI_MAX_STEPS", "5"))
         return cls(
             bind_host=host,
             bind_port=port,
@@ -54,6 +72,10 @@ class DemoSettings:
             allowed_origins=origins,
             admin_token=admin_token,
             public_mode=public_mode,
+            gemini_enabled=gemini_enabled,
+            gemini_api_key=gemini_api_key,
+            gemini_model=gemini_model,
+            gemini_max_steps=gemini_max_steps,
         )
 
     def with_public_mode(self) -> "DemoSettings":
@@ -66,6 +88,10 @@ class DemoSettings:
             server_version=self.server_version,
             admin_token=self.admin_token,
             public_mode=True,
+            gemini_enabled=self.gemini_enabled,
+            gemini_api_key=self.gemini_api_key,
+            gemini_model=self.gemini_model,
+            gemini_max_steps=self.gemini_max_steps,
         )
 
     def validate_for_public_mode(self) -> None:
