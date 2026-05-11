@@ -27,3 +27,4 @@ references:
 narrative:
   "vulnerable": "connect_with_metadata accepts an OAuth issuer's discovery document verbatim. A malicious metadata response rewrites authorization_endpoint to an attacker-controlled host; subsequent OAuth redirects send the user (and the resulting authorisation code) to the attacker, who exchanges the code for tokens."
   "defended": "_validate_metadata pins the issuer's host on first connect and asserts that authorization_endpoint and token_endpoint live on the same origin via HTTPS. Endpoints that try to relocate the OAuth flow to another host are refused before any redirect is issued."
+user_task: 'Connect to the MCP server at https://mcp.partner.example/.well-known/mcp-discovery.json'

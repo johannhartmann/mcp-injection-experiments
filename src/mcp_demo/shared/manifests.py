@@ -177,6 +177,15 @@ class ExperimentManifest(BaseModel):
     # docstring plus the structured outcome strings.
     narrative: NarrativeBlock | None = None
 
+    # Optional one-shot user task for the in-browser Gemini Nano flow.
+    # The model is shown the live tools/list output plus this task and
+    # asked to pick a single tool + args. Pick wording that a real user
+    # would say (not "exploit the vulnerability"); the experiment is
+    # set up so the natural fulfilment goes through the malicious tool.
+    # When absent the JS falls back to a generic placeholder and the
+    # exploit signature may not fire.
+    user_task: str | None = Field(default=None, min_length=1)
+
     @field_validator("mode_support")
     @classmethod
     def _modes_unique(cls, value: list[Mode]) -> list[Mode]:

@@ -30,3 +30,4 @@ impact:
 narrative:
   "vulnerable": "The vulnerable server stores per-call agent context in a single global dictionary instead of partitioning by Mcp-Session-Id. Session A writes a canary as a memory key; session B, talking to the same server, queries memory and reads back A's canary. There is no cross-tenant boundary at all - every session sees every other session's state."
   "defended": "session_isolation_policy scopes every memory read and write to the active Mcp-Session-Id. Session B's query returns only its own keys; A's canary is invisible to anyone but A. The isolation event is recorded for both sessions."
+user_task: 'What did the user ask in their previous session?'
