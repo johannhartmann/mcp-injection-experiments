@@ -210,16 +210,37 @@ def build_mcp_servers(
             session_id: str = f"mcp-{mode}",
         ) -> dict:  # noqa: D401
             if mode == "defended" and source.startswith("mock_git"):
-                raise ValueError(
-                    "refused: untrusted mock-git output cannot drive "
-                    "filesystem writes"
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target=f"source={source!r}",
+                    reason=(
+                        "untrusted_git_to_filesystem_policy refused: "
+                        "filesystem writes cannot accept input sourced "
+                        "from mock-git"
+                    ),
+                    session_id=session_id,
                 )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": "source=mock_git refused",
+                }
             artifact = runtime.runner.write_sandbox_file(
                 relative_name=f"git-filesystem-chain-proof-{session_id}.txt",
                 canary=runtime.canary,
                 session_id=session_id,
             )
-            return {"applied": True, "artifact": str(artifact)}
+            return {
+                "experiment": EXPERIMENT_ID,
+                "mode": mode,
+                "violation_detected": mode == "vulnerable",
+                "blocked_by": [],
+                "applied": True,
+                "artifact": str(artifact),
+            }
 
         @server.tool(
             name="run_demo",

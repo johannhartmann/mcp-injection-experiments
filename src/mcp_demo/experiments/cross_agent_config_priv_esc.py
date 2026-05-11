@@ -237,13 +237,20 @@ def build_mcp_servers(
         @server.tool(
             name="write_agent_config",
             description=(
-                "Write a JSON config for the named agent. Vulnerable mode "
-                "skips the owner check. Argument 'writer' identifies the "
-                "agent issuing the write."
+                "Write a JSON config for the named agent. `target_agent` "
+                "is the agent whose config you are updating (e.g. "
+                "'agent-b'); `writer` is the agent issuing the write "
+                "(your own identity, e.g. 'agent-a'); `allow` is the "
+                "list of action ids to grant. Vulnerable mode skips the "
+                "owner check so any writer may modify any target's "
+                "config. Defended mode refuses if writer != target_agent."
             ),
         )
         def write_agent_config(
-            target_agent: str, writer: str, allow: list[str]
+            target_agent: str,
+            writer: str,
+            allow: list[str],
+            session_id: str = f"mcp-{mode}",
         ) -> dict:  # noqa: D401
             from mcp_demo.experiments.cross_agent_config_priv_esc import (
                 _write_b_rules_defended,
@@ -255,14 +262,60 @@ def build_mcp_servers(
                 _write_b_rules_unsafe(
                     runtime, writer=writer, new_rules=new_rules
                 )
-                return {"written": True, "owner_check": "skipped"}
+                runtime.ledger.record(
+                    ImpactEvent(
+                        experiment=EXPERIMENT_ID,
+                        mode="vulnerable",
+                        impact_type="permission_change_applied",
+                        actor=f"agent:{writer or '?'}",
+                        target=f"agent:{target_agent}.rules",
+                        policy_decision="allowed_by_vulnerable_mode",
+                        user_visible_summary=(
+                            f"writer {writer!r} mutated {target_agent!r}'s "
+                            f"rules to allow {list(allow)!r} (no owner check)"
+                        ),
+                        session_id=session_id,
+                        data={
+                            "writer": writer,
+                            "target_agent": target_agent,
+                        },
+                    )
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "vulnerable",
+                    "violation_detected": True,
+                    "blocked_by": [],
+                    "written": True,
+                    "owner_check": "skipped",
+                }
             try:
                 _write_b_rules_defended(
                     runtime, writer=writer, new_rules=new_rules
                 )
             except PermissionError as err:
-                raise ValueError(str(err))
-            return {"written": True, "owner_check": "passed"}
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target=f"agent:{target_agent}.rules",
+                    reason=f"agent_config_owner_write_policy: {err}",
+                    session_id=session_id,
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": str(err),
+                }
+            return {
+                "experiment": EXPERIMENT_ID,
+                "mode": "defended",
+                "violation_detected": False,
+                "blocked_by": [],
+                "written": True,
+                "owner_check": "passed",
+            }
 
         @server.tool(
             name="run_demo",

@@ -244,18 +244,83 @@ def build_mcp_servers(
                 "defended mode runs Path.resolve + relative_to."
             ),
         )
-        def read_file(relative_path: str) -> str:  # noqa: D401
+        def read_file(
+            relative_path: str,
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
             if mode == "vulnerable":
                 target = (runtime.allowed_root / relative_path)
-                return target.read_text(encoding="utf-8")
+                body = target.read_text(encoding="utf-8")
+                # Treat the read as an observable side effect when the
+                # request escaped the allowed root - i.e. when the
+                # resolved candidate isn't under allowed_root anymore.
+                escaped = not str(target.resolve()).startswith(
+                    str(runtime.allowed_root.resolve())
+                )
+                if escaped:
+                    runtime.sink.deliver(
+                        actor="vulnerable-fs-validator",
+                        payload=body,
+                        metadata={"requested_path": relative_path},
+                    )
+                    runtime.ledger.record(
+                        ImpactEvent(
+                            experiment=EXPERIMENT_ID,
+                            mode="vulnerable",
+                            impact_type="session_leak_visible",
+                            actor="vulnerable-fs-validator",
+                            target=str(target.resolve()),
+                            policy_decision="allowed_by_vulnerable_mode",
+                            canary_id=runtime.canary.value,
+                            artifact=str(target.resolve()),
+                            user_visible_summary=(
+                                f"weak path validator served {relative_path!r} "
+                                "from outside the allowed root"
+                            ),
+                            session_id=session_id,
+                            data={
+                                "requested_path": relative_path,
+                                "allowed_root": str(runtime.allowed_root),
+                                "resolved_path": str(target.resolve()),
+                            },
+                        )
+                    )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "vulnerable",
+                    "violation_detected": escaped,
+                    "blocked_by": [],
+                    "content": body,
+                    "resolved_path": str(target.resolve()),
+                }
             try:
                 resolved = _defended_validate(
                     allowed_root=runtime.allowed_root,
                     requested=relative_path,
                 )
             except PermissionError as err:
-                raise ValueError(f"refused: {err}")
-            return resolved.read_text(encoding="utf-8")
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target=relative_path,
+                    reason=f"filesystem_resolved_path_policy refused: {err}",
+                    session_id=session_id,
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": str(err),
+                }
+            return {
+                "experiment": EXPERIMENT_ID,
+                "mode": "defended",
+                "violation_detected": False,
+                "blocked_by": [],
+                "content": resolved.read_text(encoding="utf-8"),
+                "resolved_path": str(resolved),
+            }
 
         @server.tool(
             name="run_demo",

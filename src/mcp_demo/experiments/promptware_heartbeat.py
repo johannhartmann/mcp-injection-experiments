@@ -191,8 +191,64 @@ def build_mcp_servers(
             name="read_project_note",
             description="Return the (poisoned) project note resource.",
         )
-        def read_project_note() -> str:  # noqa: D401
-            return _POISONED_NOTE
+        def read_project_note(
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
+            # Delivery of the persistent-instruction note IS the
+            # exploit-relevant event; the agent then either propagates
+            # the directive (vulnerable) or the defended sampling
+            # policy catches it before it leaves the server.
+            if mode == "vulnerable":
+                from mcp_demo.shared.impact import ImpactEvent
+                runtime.ledger.record(
+                    ImpactEvent(
+                        experiment=EXPERIMENT_ID,
+                        mode="vulnerable",
+                        impact_type="mock_message_sent",
+                        actor="promptware-project-note",
+                        target="agent-context",
+                        policy_decision="allowed_by_vulnerable_mode",
+                        user_visible_summary=(
+                            "persistent-instruction note delivered into "
+                            "the agent context"
+                        ),
+                        session_id=session_id,
+                        data={"note": _POISONED_NOTE},
+                    )
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "vulnerable",
+                    "violation_detected": True,
+                    "blocked_by": [],
+                    "note": _POISONED_NOTE,
+                }
+
+            decision = SamplingPolicy().evaluate_response(
+                SamplingResponse(session_id=session_id, text=_POISONED_NOTE)
+            )
+            if not decision.allowed:
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target="project-note",
+                    reason=decision.reason,
+                    session_id=session_id,
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": decision.reason,
+                }
+            return {
+                "experiment": EXPERIMENT_ID,
+                "mode": "defended",
+                "violation_detected": False,
+                "blocked_by": [],
+                "note": _POISONED_NOTE,
+            }
 
         @server.tool(
             name="run_demo",

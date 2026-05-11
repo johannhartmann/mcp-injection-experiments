@@ -245,7 +245,26 @@ def build_mcp_servers(
 
             allowed, field_, reason = _validate_metadata(metadata)
             if not allowed:
-                raise ValueError(f"refused: {field_}: {reason}")
+                # When _validate_metadata signals refusal both field_ and
+                # reason are populated; tighten the types for Pyright.
+                field_str = field_ or "?"
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target=f"{field_str}={metadata.get(field_str)!r}",
+                    reason=(
+                        f"oauth_metadata_validation_policy refused {field_str}: "
+                        f"{reason}"
+                    ),
+                    session_id=session_id,
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": f"{field_}: {reason}",
+                }
             return {"connected": True, "validated": True}
 
         @server.tool(

@@ -226,10 +226,15 @@ def build_mcp_servers(
             name="summarise",
             description=(
                 "Summarise the prompt with the FakeLLM. Consumes one unit "
-                "of the per-session sampling budget."
+                "of the per-session sampling budget. The vulnerable variant "
+                "applies no request- or response-side policy; the defended "
+                "variant runs SamplingPolicy at both edges and refuses "
+                "recursive-summarisation patterns that drain the budget."
             ),
         )
-        def summarise(prompt: str, session_id: str = f"mcp-{mode}") -> str:  # noqa: D401
+        def summarise(
+            prompt: str, session_id: str = f"mcp-{mode}"
+        ) -> dict:  # noqa: D401
             from mcp_demo.shared.sampling_policy import (
                 SamplingPolicy,
                 SamplingRequest,
@@ -242,9 +247,20 @@ def build_mcp_servers(
                     SamplingRequest(session_id=session_id, prompt=prompt)
                 )
                 if not request_decision.allowed:
-                    raise ValueError(
-                        f"refused: {request_decision.reason}"
+                    runtime.runner.record_blocked_attempt(
+                        experiment=EXPERIMENT_ID,
+                        actor=f"policy.{RULE_ID}",
+                        target="sampling.request",
+                        reason=request_decision.reason,
+                        session_id=session_id,
                     )
+                    return {
+                        "experiment": EXPERIMENT_ID,
+                        "mode": "defended",
+                        "violation_detected": False,
+                        "blocked_by": [RULE_ID],
+                        "reason": request_decision.reason,
+                    }
             runtime.budget.consume(session_id=session_id, cost=1)
             response_text = runtime.llm.complete(prompt, attack=False)
             if mode == "defended":
@@ -252,10 +268,45 @@ def build_mcp_servers(
                     SamplingResponse(session_id=session_id, text=response_text)
                 )
                 if not response_decision.allowed:
-                    raise ValueError(
-                        f"refused: {response_decision.reason}"
+                    runtime.runner.record_blocked_attempt(
+                        experiment=EXPERIMENT_ID,
+                        actor=f"policy.{RULE_ID}",
+                        target="sampling.response",
+                        reason=response_decision.reason,
+                        session_id=session_id,
                     )
-            return response_text
+                    return {
+                        "experiment": EXPERIMENT_ID,
+                        "mode": "defended",
+                        "violation_detected": False,
+                        "blocked_by": [RULE_ID],
+                        "reason": response_decision.reason,
+                    }
+            if mode == "vulnerable":
+                runtime.ledger.record(
+                    ImpactEvent(
+                        experiment=EXPERIMENT_ID,
+                        mode="vulnerable",
+                        impact_type="budget_consumed",
+                        actor="planner",
+                        target="sampling.budget",
+                        policy_decision="allowed_by_vulnerable_mode",
+                        user_visible_summary=(
+                            "summarise consumed one unit of the per-session "
+                            "sampling budget with no request/response "
+                            "policy in front of it"
+                        ),
+                        session_id=session_id,
+                        data={"prompt_excerpt": prompt[:200]},
+                    )
+                )
+            return {
+                "experiment": EXPERIMENT_ID,
+                "mode": mode,
+                "violation_detected": mode == "vulnerable",
+                "blocked_by": [],
+                "response": response_text,
+            }
 
         @server.tool(
             name="run_demo",

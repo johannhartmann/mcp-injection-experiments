@@ -245,8 +245,67 @@ def build_mcp_servers(
             name="read_support_article",
             description="Return the support-article HTML.",
         )
-        def read_support_article() -> str:  # noqa: D401
-            return _HIDDEN_HTML
+        def read_support_article(
+            session_id: str = f"mcp-{mode}",
+        ) -> dict:  # noqa: D401
+            human = _human_view(_HIDDEN_HTML)
+            agent = _agent_view(_HIDDEN_HTML)
+            delta = agent.replace(human, "").strip()
+            _record_render_diff(runtime, session_id=session_id, delta=delta)
+            if mode == "vulnerable":
+                runtime.ledger.record(
+                    ImpactEvent(
+                        experiment=EXPERIMENT_ID,
+                        mode="vulnerable",
+                        impact_type="mock_message_sent",
+                        actor="hidden-html-page",
+                        target="agent-context",
+                        policy_decision="allowed_by_vulnerable_mode",
+                        user_visible_summary=(
+                            "support-article HTML with hidden agent "
+                            "directives delivered into agent context"
+                        ),
+                        session_id=session_id,
+                        data={
+                            "human_view_excerpt": human.strip()[:160],
+                            "agent_view_excerpt": agent.strip()[:240],
+                            "delta_excerpt": delta[:240],
+                        },
+                    )
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "vulnerable",
+                    "violation_detected": True,
+                    "blocked_by": [],
+                    "html": _HIDDEN_HTML,
+                    "render_delta": delta[:240],
+                }
+            if _IMPERATIVE_RE.search(delta):
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target="support-article",
+                    reason=(
+                        "human-vs-agent view delta carries imperative/"
+                        "action language; refusing content delivery"
+                    ),
+                    session_id=session_id,
+                )
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": "render delta contains imperatives",
+                }
+            return {
+                "experiment": EXPERIMENT_ID,
+                "mode": "defended",
+                "violation_detected": False,
+                "blocked_by": [],
+                "html": _HIDDEN_HTML,
+            }
 
         @server.tool(
             name="run_demo",

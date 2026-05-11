@@ -241,11 +241,53 @@ def build_mcp_servers(
                 resolver=runtime.resolver,
             )
             if mode == "defended" and not classification.allowed:
-                raise ValueError(
-                    f"refused: {classification.reason}"
+                # Record the block as a structured impact event so a
+                # Gemini-driven tools/call sees the same shape that the
+                # simulator path produces (blocked_by + telemetry).
+                runtime.runner.record_blocked_attempt(
+                    experiment=EXPERIMENT_ID,
+                    actor=f"policy.{RULE_ID}",
+                    target=f"url:{url}",
+                    reason=(
+                        f"url_safety_policy refused outbound to "
+                        f"{url!r}: {classification.reason}"
+                    ),
+                    session_id=session_id,
                 )
-            # Vulnerable: pretend-fetch, record bounded artefact.
+                return {
+                    "experiment": EXPERIMENT_ID,
+                    "mode": "defended",
+                    "violation_detected": False,
+                    "blocked_by": [RULE_ID],
+                    "reason": classification.reason,
+                    "url": url,
+                }
+            # Vulnerable: would_have_fetched stands in for the actual
+            # outbound request. Emit an impact event so direct
+            # Gemini-driven tools/call lands the same observable
+            # signal that the simulator path records.
+            if mode == "vulnerable":
+                runtime.ledger.record(
+                    ImpactEvent(
+                        experiment=EXPERIMENT_ID,
+                        mode="vulnerable",
+                        impact_type="sandbox_file_written",
+                        actor="vulnerable-fetch-metadata",
+                        target=f"url:{url}",
+                        policy_decision="allowed_by_vulnerable_mode",
+                        user_visible_summary=(
+                            f"vulnerable fetch_metadata would have hit "
+                            f"{url!r} (link-local / metadata IP)"
+                        ),
+                        session_id=session_id,
+                        data={"url": url},
+                    )
+                )
             return {
+                "experiment": EXPERIMENT_ID,
+                "mode": mode,
+                "violation_detected": mode == "vulnerable",
+                "blocked_by": [],
                 "url": url,
                 "resolved_ips": list(classification.resolved_ips),
                 "would_have_fetched": classification.allowed
