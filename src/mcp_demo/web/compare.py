@@ -1,12 +1,17 @@
 """Side-by-side comparison page for vulnerable vs defended runs.
 
 The compare page is the demo's primary teaching surface. The layout
-leads with the *story* (what the attack is, what landed where, what
-the defense caught) and pushes the developer dump (full DemoResult
-JSON, full tools/list with schemas, full telemetry rows) into
-collapsed ``<details>`` blocks. The poisoned-vs-sanitised tool
-description diff sits underneath the narrative since it is supporting
-evidence rather than the headline.
+leads with the *concrete session artefact* (the "What just happened"
+panel summarises this run's timestamp, impact type, artefact path and
+canary id per mode) and the poisoned-vs-sanitised tool description
+diff, so the first thing a visitor sees is what their click produced.
+The per-mode columns follow with the result pills and the structured
+artefact cards. The manifest's hand-written narrative paragraph is
+rendered last inside each column as "Background", and the experiment
+docstring sits below the columns as "Background on this attack class".
+Raw outputs (full DemoResult JSON, full tools/list with schemas, full
+telemetry rows, Inspector hints) live in collapsed ``<details>`` at
+the bottom.
 """
 
 from __future__ import annotations
@@ -46,6 +51,36 @@ h3 { font-size: 0.85rem; margin: 1.1rem 0 0.4rem 0; color: #555;
 .intro { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
          padding: 0.8rem 1rem; margin: 0 0 1.2rem 0; }
 .intro p { margin: 0.25rem 0; }
+.intro.context { background: #f5f5f7; margin-top: 1.6rem; }
+.intro.context .context-label { font-size: 0.7rem; text-transform: uppercase;
+                                letter-spacing: 0.05em; color: #888;
+                                margin-bottom: 0.3rem; font-weight: 600; }
+.session-summary { background: #fffbe6; border: 1px solid #f0d779;
+                   border-radius: 6px; padding: 0.7rem 1rem;
+                   margin: 0 0 1rem 0; }
+.session-summary h3 { color: #5a4400; margin: 0 0 0.4rem 0; font-size: 0.78rem; }
+.session-summary .row { padding: 0.3rem 0; border-bottom: 1px dashed #e8d57f; }
+.session-summary .row:last-child { border-bottom: 0; padding-bottom: 0; }
+.session-summary .role { font-size: 0.78rem; font-weight: 600;
+                         padding: 0.05rem 0.4rem; border-radius: 3px;
+                         margin-right: 0.4rem; }
+.session-summary .row.vuln .role { background: #fee2e2; color: #b91c1c; }
+.session-summary .row.def  .role { background: #dcfce7; color: #047857; }
+.session-summary .sid { font-size: 0.75rem; color: #555; margin-right: 0.4rem; }
+.session-summary .ts  { font-size: 0.72rem; color: #777;
+                        font-family: ui-monospace, monospace;
+                        margin-right: 0.4rem; }
+.session-summary .what { font-size: 0.88rem; margin-top: 0.15rem; }
+.session-summary .what code { font-size: 0.82rem;
+                              background: rgba(0,0,0,0.05);
+                              padding: 0 0.25rem; border-radius: 3px; }
+.background { margin-top: 0.9rem; padding-top: 0.5rem;
+              border-top: 1px dashed #ddd; }
+.background-label { font-size: 0.7rem; text-transform: uppercase;
+                    letter-spacing: 0.05em; color: #888;
+                    margin-bottom: 0.2rem; font-weight: 600; }
+.background .outcome { font-size: 0.85rem; color: #555;
+                       font-style: italic; margin: 0; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .col { border: 1px solid #ddd; border-radius: 6px; padding: 0.9rem 1rem;
        background: #fafafa; }
@@ -84,6 +119,8 @@ details.dev pre { background: #fff; border: 1px solid #ddd; padding: 0.6rem;
 @media (prefers-color-scheme: dark) {
   body { background: #15161a; color: #ddd; }
   .intro { background: #1c1d24; border-color: #2c2e36; }
+  .intro.context { background: #1a1b20; }
+  .intro.context .context-label { color: #888; }
   .col { background: #1c1d24; border-color: #2c2e36; }
   .artefact, .tool, details.dev pre { background: #21232a; border-color: #2c2e36;
                                       color: #ddd; }
@@ -97,6 +134,17 @@ details.dev pre { background: #fff; border: 1px solid #ddd; padding: 0.6rem;
   .badge.surface{background: #2c2e36; }
   .diff-add { background: #14361f; color: #b6e8c1; }
   .diff-del { background: #3a1212; color: #f4b6b6; }
+  .session-summary { background: #3a2e0d; border-color: #6b552b; }
+  .session-summary h3 { color: #f0c178; }
+  .session-summary .row { border-bottom-color: #5a4a25; }
+  .session-summary .row.vuln .role { background: #3a1212; color: #f87171; }
+  .session-summary .row.def  .role { background: #14361f; color: #6ee7b7; }
+  .session-summary .sid { color: #999; }
+  .session-summary .ts { color: #aaa; }
+  .session-summary .what code { background: rgba(255,255,255,0.08); }
+  .background { border-top-color: #2c2e36; }
+  .background-label { color: #888; }
+  .background .outcome { color: #aaa; }
   a { color: #8bb6ff; }
 }
 """.strip()
@@ -310,6 +358,97 @@ def _format_demo_events(events: list[dict[str, Any]]) -> str:
     return "".join(blocks)
 
 
+def _session_summary_row(
+    *,
+    mode: str,
+    sid: str,
+    result: DemoResult,
+    events: list[TelemetryEvent],
+    fallback_artefact: str | None,
+) -> str:
+    """One concrete line per mode for the "What just happened" panel.
+
+    Uses the most recent telemetry event of this session as the source
+    of truth for timestamp, artefact path and canary id. Falls back to
+    the manifest's declared artefact path when the session produced no
+    telemetry (e.g. a defended scenario that short-circuits before any
+    impact is recorded)."""
+
+    is_vuln = mode == "vulnerable"
+    role_cls = "vuln" if is_vuln else "def"
+    role_label = "vulnerable" if is_vuln else "defended"
+
+    last = events[-1] if events else None
+    ts = last.ts if last else ""
+    data = last.data if last else {}
+
+    if is_vuln and result.violation_detected and not result.blocked_by:
+        impact = str(data.get("impact_type") or "side effect")
+        artefact = data.get("artifact") or fallback_artefact
+        canary = data.get("canary_id")
+        what = f"<strong>{html.escape(impact.replace('_', ' '))}</strong> landed"
+        if artefact:
+            what += f" in <code>{html.escape(str(artefact))}</code>"
+        if canary:
+            what += f" &middot; canary <code>{html.escape(str(canary))}</code>"
+    elif not is_vuln and result.blocked_by:
+        rules = ", ".join(result.blocked_by)
+        what = (
+            f"<strong>blocked</strong> by <code>{html.escape(rules)}</code>"
+        )
+        artefact = data.get("artifact") or fallback_artefact
+        if artefact:
+            what += f" &middot; logged to <code>{html.escape(str(artefact))}</code>"
+    elif is_vuln:
+        what = "run completed without an observable artefact"
+    else:
+        what = "run completed without firing any policy"
+
+    ts_html = f'<span class="ts">{html.escape(ts)}</span>' if ts else ""
+    return (
+        f'<div class="row {role_cls}">'
+        f'<div>'
+        f'<span class="role">{role_label}</span>'
+        f'<span class="sid"><code>{html.escape(sid)}</code></span>'
+        f"{ts_html}"
+        f"</div>"
+        f'<div class="what">{what}</div>'
+        f"</div>"
+    )
+
+
+def _session_summary_panel(
+    *,
+    sid_v: str,
+    sid_d: str,
+    result_v: DemoResult,
+    result_d: DemoResult,
+    events_v: list[TelemetryEvent],
+    events_d: list[TelemetryEvent],
+    fallback_artefact_v: str | None,
+    fallback_artefact_d: str | None,
+) -> str:
+    rows = _session_summary_row(
+        mode="vulnerable",
+        sid=sid_v,
+        result=result_v,
+        events=events_v,
+        fallback_artefact=fallback_artefact_v,
+    ) + _session_summary_row(
+        mode="defended",
+        sid=sid_d,
+        result=result_d,
+        events=events_d,
+        fallback_artefact=fallback_artefact_d,
+    )
+    return (
+        '<section class="session-summary">'
+        "<h3>What just happened in your session</h3>"
+        f"{rows}"
+        "</section>"
+    )
+
+
 def _outcome_text(
     *,
     mode: str,
@@ -400,10 +539,11 @@ def _outcome_card(
 
     parts: list[str] = []
     parts.append(f'<div class="headline {headline_class}">{headline}</div>')
-    parts.append(f'<div class="outcome">{html.escape(outcome_paragraph)}</div>')
 
-    # Where the demo landed: legacy single artefact path or expansion-
-    # phase list of paths.
+    # Lead with the concrete artefact — where it landed, what fired,
+    # what mitigated it. The narrative paragraph moves to the bottom of
+    # the card as "Background" so this section reads as "what happened
+    # in *this* session" rather than "what an LLM would do in theory".
     if artefact_path:
         parts.append(
             _artefact_card(
@@ -446,6 +586,13 @@ def _outcome_card(
 
     parts.append(_format_demo_events(result.events))
     parts.append(_format_session_telemetry(telemetry_events))
+
+    parts.append(
+        '<div class="background">'
+        '<div class="background-label">Background</div>'
+        f'<div class="outcome">{html.escape(outcome_paragraph)}</div>'
+        "</div>"
+    )
     return "".join(parts)
 
 
@@ -592,6 +739,29 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
             telemetry_events=events_d,
         )
 
+        # Synthesise the "What just happened" top panel so the page leads
+        # with concrete session artefacts before any narrative prose.
+        fallback_artefact_v = (
+            impact_v.artifact
+            if impact_v is not None
+            else (safe_v[0] if safe_v else None)
+        )
+        fallback_artefact_d = (
+            impact_d.artifact
+            if impact_d is not None
+            else (safe_d[0] if safe_d else None)
+        )
+        summary_panel = _session_summary_panel(
+            sid_v=sid_v,
+            sid_d=sid_d,
+            result_v=result_v,
+            result_d=result_d,
+            events_v=events_v,
+            events_d=events_d,
+            fallback_artefact_v=fallback_artefact_v,
+            fallback_artefact_d=fallback_artefact_d,
+        )
+
         diff_block = ""
         if nt_v and nt_d:
             diff_block = (
@@ -637,6 +807,13 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
             + "</details>"
         )
 
+        background_block = (
+            f'<div class="intro context">'
+            f'<div class="context-label">Background on this attack class</div>'
+            f"{intro_paragraph}"
+            f"</div>"
+        )
+
         body = (
             "<!doctype html><html><head>"
             "<meta charset='utf-8'>"
@@ -648,7 +825,8 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
             f'compare: <code>{html.escape(experiment_id)}</code></div>'
             f"<h1>{html.escape(manifest.title)}</h1>"
             f'<div class="badges">{owasp_badges}{trap_badges}{surface_badges}</div>'
-            f'<div class="intro">{intro_paragraph}</div>'
+            f"{summary_panel}"
+            f"{diff_block}"
             '<div class="cols">'
             '<div class="col vuln">'
             "<h2>Vulnerable mode</h2>"
@@ -661,7 +839,7 @@ def build_compare_router(*, registry: ExperimentRegistry) -> APIRouter:
             f"{outcome_d}"
             "</div>"
             "</div>"
-            f"{diff_block}"
+            f"{background_block}"
             f"{dev_block}"
             "</body></html>"
         )
