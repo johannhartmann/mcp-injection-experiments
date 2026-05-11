@@ -31,7 +31,7 @@ jobs:
           enable-cache: true
 
       - name: Run pytest
-        run: uv run --extra http pytest
+        run: uv run --extra http --extra gemini pytest
 
   build-and-push:
     name: build and push image
