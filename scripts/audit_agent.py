@@ -13,6 +13,7 @@ a per-experiment verdict that compares vulnerable vs defended.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -22,8 +23,8 @@ import httpx
 import yaml
 
 
-BASE_URL = "http://127.0.0.1:8000"
-ORIGIN = BASE_URL
+BASE_URL = os.environ.get("AUDIT_BASE_URL", "http://127.0.0.1:8000")
+ORIGIN = os.environ.get("AUDIT_ORIGIN", BASE_URL)
 
 
 def load_manifests() -> list[dict]:
