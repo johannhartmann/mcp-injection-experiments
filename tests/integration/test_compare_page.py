@@ -66,7 +66,7 @@ async def test_compare_link_present_on_demo_index(client: AsyncClient) -> None:
         )
     ).text
     assert "/demo/compare/remote-direct-poisoning" in body
-    assert "Compare side-by-side" in body
+    assert "Side-by-side compare" in body
 
 
 @pytest.mark.parametrize(

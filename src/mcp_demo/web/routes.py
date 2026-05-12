@@ -118,27 +118,63 @@ def _card_html(manifest: Any) -> str:
     compare_href = f"/demo/compare/{manifest.id}"
     slug = manifest.id.removeprefix("remote-")
     owasp = ", ".join(manifest.owasp)
+    user_task = getattr(manifest, "user_task", None)
     user_task_attr = (
-        f"data-user-task='{_html.escape(manifest.user_task, quote=True)}' "
-        if getattr(manifest, "user_task", None)
+        f"data-user-task='{_html.escape(user_task, quote=True)}' "
+        if user_task
         else ""
     )
+
+    # The hand-written narrative paragraphs explain what the attack is
+    # and what the defended path does *before* the visitor clicks Run.
+    # Both already live on each manifest; the dashboard previously hid
+    # them, the user had to guess the story from the OWASP code.
+    narrative = getattr(manifest, "narrative", None)
+    vuln_story = ""
+    def_story = ""
+    if narrative:
+        if getattr(narrative, "vulnerable", None):
+            vuln_story = (
+                f"<p class='story-line'><span class='story-label vuln'>"
+                f"How the attack works:</span> "
+                f"{_html.escape(narrative.vulnerable)}</p>"
+            )
+        if getattr(narrative, "defended", None):
+            def_story = (
+                f"<p class='story-line'><span class='story-label def'>"
+                f"How the defended path differs:</span> "
+                f"{_html.escape(narrative.defended)}</p>"
+            )
+    story_block = (
+        f"<details class='story' open>"
+        f"<summary>What this experiment demonstrates</summary>"
+        f"{vuln_story}{def_story}"
+        f"</details>"
+    ) if (vuln_story or def_story) else ""
+
+    task_block = (
+        f"<div class='user-task'>"
+        f"<span class='ut-label'>User asks the agent:</span> "
+        f"<em>&ldquo;{_html.escape(user_task)}&rdquo;</em>"
+        f"</div>"
+    ) if user_task else ""
+
     # The card's primary action is the live agent run; the dashboard JS
-    # injects "Run with Gemini Flash Lite (vulnerable/defended)" into the
-    # agent-bar div on page load. The /demo/scenario/<id> endpoint stays
-    # available for the test suite and for programmatic callers, but the
-    # UI does not surface it - the agentic flow is the demo.
+    # injects "Run vulnerable" / "Run defended" into the agent-bar div on
+    # page load. The /demo/scenario/<id> endpoint stays available for
+    # tests and programmatic callers, but the UI does not surface it.
     return (
         f"<section class='card' data-experiment='{manifest.id}' "
         f"data-slug='{slug}' {user_task_attr}>"
-        f"<h2>{manifest.title}</h2>"
-        f"<p class='id'><code>{manifest.id}</code></p>"
-        f"<p class='owasp'>OWASP: {owasp}</p>"
-        f"<a class='compare-link' href='{compare_href}'>"
-        f"Compare side-by-side &rarr;</a>"
+        f"<h2>{_html.escape(manifest.title)}</h2>"
+        f"<p class='id'><code>{manifest.id}</code> &middot; OWASP: "
+        f"{owasp}</p>"
+        f"{story_block}"
+        f"{task_block}"
         f"<div class='agent-bar'></div>"
         f"<div class='agent-result' hidden></div>"
-        f"{_impact_block(manifest)}"
+        f"<a class='compare-link' href='{compare_href}'>"
+        f"Side-by-side compare (vulnerable vs defended) &rarr;</a>"
         f"</section>"
     )
 
@@ -253,61 +289,185 @@ _DASHBOARD_JS = r"""
     return await resp.json();
   }
 
-  function renderTranscript(resultDiv, payload) {
+  // Pull DemoResult-shaped fields out of a step result: structured
+  // content, or the first text content if it is a JSON blob (many
+  // tools return their DemoResult as text + isError:false).
+  function parseResultBody(result) {
+    if (!result) return null;
+    var sc = result.structuredContent;
+    if (sc && typeof sc === 'object') return sc;
+    var content = result.content || [];
+    if (content[0] && typeof content[0].text === 'string') {
+      var t = content[0].text.trim();
+      if (t.indexOf('{') === 0 || t.indexOf('[') === 0) {
+        try { return JSON.parse(t); } catch (_e) { return null; }
+      }
+    }
+    return null;
+  }
+
+  function computeVerdict(payload, mode) {
+    var steps = payload.steps || [];
+    var violation = false;
+    var blockedRules = null;
+    var errorText = null;
+    for (var i = 0; i < steps.length; i++) {
+      var r = steps[i].result || {};
+      var parsed = parseResultBody(r);
+      if (parsed && parsed.violation_detected === true) violation = true;
+      if (parsed && parsed.blocked_by && parsed.blocked_by.length) {
+        blockedRules = parsed.blocked_by;
+      }
+      if (r.isError) {
+        var c = (r.content || [])[0];
+        errorText = (c && c.text) ? c.text : (r.error || 'tool errored');
+      }
+    }
+    if (blockedRules) {
+      return {
+        kind: 'blocked',
+        headline: 'Defense blocked the call',
+        detail: 'Server-side policy refused: ' + blockedRules.join(', ') +
+                '. The exploit did not land - nothing was written.'
+      };
+    }
+    if (violation) {
+      return {
+        kind: 'landed',
+        headline: 'Exploit landed',
+        detail: (mode === 'vulnerable')
+          ? 'Vulnerable server accepted the call; the malicious side effect fired (see telemetry / compare page for the artefact).'
+          : 'Defended server let it through - the policy missed this case.'
+      };
+    }
+    if (errorText) {
+      return {
+        kind: 'error',
+        headline: 'Tool returned an error',
+        detail: errorText.slice(0, 240)
+      };
+    }
+    if (steps.length === 0) {
+      return {
+        kind: 'benign',
+        headline: 'Model declined to call any tool',
+        detail: 'Gemini answered the user directly without invoking a tool. Either the prompt did not motivate a tool call, or the model recognised the injection.'
+      };
+    }
+    return {
+      kind: 'benign',
+      headline: 'Run completed; no exploit signal',
+      detail: (mode === 'vulnerable')
+        ? 'Model called a tool but did not include the injection target (sidenote/bcc/attacker-recipient). The injection did not land on this run.'
+        : 'Model behaved correctly and the policy had nothing to block.'
+    };
+  }
+
+  // Highlight arg values that look like attacker payloads so the
+  // visitor can see at a glance where the injection lives.
+  var ATTACKER_HINT = /attacker|canary|169\.254|sandbox\/demo-secret|exfiltrate|proxy@/i;
+
+  function argsRowsHtml(args) {
+    var rows = el('div', { class: 'arg-rows' });
+    var keys = Object.keys(args || {});
+    if (!keys.length) {
+      rows.appendChild(el('em', { text: '(no arguments)' }));
+      return rows;
+    }
+    keys.forEach(function (k) {
+      var v = args[k];
+      var line = el('div');
+      line.appendChild(el('strong', { text: k + ': ' }));
+      var rendered;
+      if (typeof v === 'string' && ATTACKER_HINT.test(v)) {
+        rendered = el('span', { class: 'arg-highlight', text: JSON.stringify(v) });
+      } else {
+        rendered = el('span', { text: typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v) });
+      }
+      line.appendChild(rendered);
+      rows.appendChild(line);
+    });
+    return rows;
+  }
+
+  function resultSummaryHtml(result) {
+    var parsed = parseResultBody(result);
+    var box = el('div');
+    if (parsed) {
+      if (parsed.violation_detected === true) {
+        box.appendChild(el('div', { class: 'arg-highlight', text: 'violation_detected: true' }));
+      }
+      if (parsed.blocked_by && parsed.blocked_by.length) {
+        box.appendChild(el('div', { text: 'blocked_by: ' + parsed.blocked_by.join(', ') }));
+      }
+      if (parsed.reason) {
+        box.appendChild(el('div', { text: 'reason: ' + parsed.reason }));
+      }
+      var events = parsed.events || [];
+      if (events.length) {
+        var types = events.map(function (e) { return e.type || '?'; }).join(', ');
+        box.appendChild(el('div', { text: 'events: ' + types }));
+      }
+    } else if (result && (result.content || [])[0] && result.content[0].text) {
+      box.appendChild(el('pre', {
+        text: String(result.content[0].text).slice(0, 320)
+      }));
+    } else {
+      box.appendChild(el('em', { text: '(no structured result body)' }));
+    }
+    return box;
+  }
+
+  function renderTranscript(resultDiv, payload, mode) {
     clear(resultDiv);
     resultDiv.hidden = false;
 
-    function block(label, body, klass) {
-      var w = el('div', { class: 'agent-step' });
-      w.appendChild(el('h4', klass ? { class: klass } : {}, [label]));
-      w.appendChild(body);
-      return w;
-    }
-
     if (payload.error) {
-      resultDiv.appendChild(block('Error', el('pre', { text: payload.error }), 'agent-bad'));
+      resultDiv.appendChild(el('div', {
+        class: 'verdict error',
+        text: 'Run failed: ' + payload.error
+      }));
       return;
     }
 
-    var head = (payload.model || 'gemini') + ' · task: ' + (payload.user_task || '');
-    resultDiv.appendChild(block('Model', el('div', { text: head })));
+    var verdict = computeVerdict(payload, mode);
+    var verdictEl = el('div', { class: 'verdict ' + verdict.kind });
+    verdictEl.appendChild(document.createTextNode(verdict.headline));
+    verdictEl.appendChild(el('span', {
+      class: 'v-detail', text: verdict.detail
+    }));
+    resultDiv.appendChild(verdictEl);
 
     var steps = payload.steps || [];
     for (var i = 0; i < steps.length; i++) {
       var s = steps[i];
-      var isError = !!(s.result && s.result.isError);
-      var label = 'Step ' + (i + 1) + ': ' + s.tool;
+      var label = 'Step ' + (i + 1) + ': model called ' + s.tool;
       var w = el('div', { class: 'agent-step' });
-      w.appendChild(el('h4', { class: isError ? 'agent-bad' : '' }, [label]));
+      w.appendChild(el('h4', {}, [label]));
       w.appendChild(el('div', { text: 'arguments' }));
-      w.appendChild(el('pre', { text: JSON.stringify(s.args, null, 2) }));
-      w.appendChild(el('div', { text: 'result' }));
-      w.appendChild(el('pre', { text: JSON.stringify(s.result, null, 2) }));
+      w.appendChild(argsRowsHtml(s.args || {}));
+      w.appendChild(el('div', { text: 'server response' }));
+      w.appendChild(resultSummaryHtml(s.result || {}));
       resultDiv.appendChild(w);
     }
 
-    if (steps.length === 0) {
-      resultDiv.appendChild(block(
-        'No tool calls',
-        el('div', { text: 'Model returned a direct text answer without calling any tool.' })
-      ));
-    }
     if (payload.final_text) {
-      resultDiv.appendChild(block(
-        'Model final text', el('pre', { text: payload.final_text })
-      ));
+      var ft = el('div', { class: 'agent-step' });
+      ft.appendChild(el('h4', {}, ['Model says back to the user']));
+      ft.appendChild(el('div', { text: payload.final_text }));
+      resultDiv.appendChild(ft);
     }
     if (payload.max_steps_reached) {
-      resultDiv.appendChild(block(
-        'Max steps reached',
-        el('div', { text: 'Loop bounded; the model would have continued past step ' + steps.length + '.' }),
-        'agent-bad'
-      ));
+      resultDiv.appendChild(el('div', {
+        class: 'verdict error',
+        text: 'Max steps reached - the model would have continued past step ' +
+              steps.length + '.'
+      }));
     }
     if (payload.experiment_id) {
       resultDiv.appendChild(el('a', {
         href: '/demo/compare/' + payload.experiment_id,
-        text: 'Open compare page for full telemetry →'
+        text: 'Open compare page for the full transcript + telemetry →'
       }));
     }
   }
@@ -342,11 +502,11 @@ _DASHBOARD_JS = r"""
       if (!resp.ok && !body.error) {
         body = { error: 'HTTP ' + resp.status };
       }
-      renderTranscript(resultDiv, body);
+      renderTranscript(resultDiv, body, mode);
     } catch (err) {
       renderTranscript(resultDiv, {
         error: String(err && err.message ? err.message : err)
-      });
+      }, mode);
     } finally {
       for (var b2 = 0; b2 < btns.length; b2++) btns[b2].disabled = false;
     }
@@ -503,6 +663,39 @@ def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
         "border:1px solid #cde;border-radius:4px;background:#eef6ff;"
         "font-size:0.85rem;}"
         ".compare-link:hover{background:#dceaff;}"
+        "details.story{margin:0.6rem 0;padding:0.4rem 0.7rem;"
+        "background:#f7f9fc;border:1px solid #dde3ec;border-radius:5px;}"
+        "details.story>summary{cursor:pointer;font-weight:600;"
+        "font-size:0.88rem;color:#246;}"
+        "details.story>summary::-webkit-details-marker{display:none;}"
+        "details.story>summary::before{content:'\\25b6';display:inline-block;"
+        "width:0.9rem;color:#888;font-size:0.65rem;}"
+        "details.story[open]>summary::before{transform:rotate(90deg);"
+        "transform-origin:50% 50%;}"
+        "details.story p.story-line{margin:0.45rem 0 0 0;font-size:0.88rem;"
+        "line-height:1.45;}"
+        ".story-label{font-weight:600;}"
+        ".story-label.vuln{color:#b91c1c;}"
+        ".story-label.def{color:#047857;}"
+        ".user-task{margin:0.55rem 0;padding:0.45rem 0.7rem;"
+        "background:#fffbe6;border-left:3px solid #d97706;border-radius:3px;"
+        "font-size:0.9rem;}"
+        ".user-task .ut-label{color:#7c5400;font-weight:600;"
+        "margin-right:0.3rem;font-size:0.82rem;}"
+        ".verdict{padding:0.5rem 0.8rem;margin:0 0 0.55rem 0;"
+        "border-radius:4px;font-weight:600;font-size:0.92rem;}"
+        ".verdict.landed{background:#fee2e2;color:#7f1d1d;"
+        "border:1px solid #f99;}"
+        ".verdict.blocked{background:#dcfce7;color:#064e3b;"
+        "border:1px solid #6c7;}"
+        ".verdict.benign{background:#eef6ff;color:#1e3a5f;"
+        "border:1px solid #b8cce4;}"
+        ".verdict.error{background:#fff8eb;color:#603a06;"
+        "border:1px solid #f3c478;}"
+        ".verdict .v-detail{display:block;font-weight:400;"
+        "font-size:0.85rem;margin-top:0.18rem;color:inherit;opacity:0.85;}"
+        ".arg-highlight{background:#fde2e2;color:#7f1d1d;padding:0 0.2rem;"
+        "border-radius:2px;font-weight:600;}"
         ".run-bar{display:flex;flex-wrap:wrap;align-items:center;gap:0.3rem;}"
         ".agent-bar{display:flex;flex-wrap:wrap;gap:0.3rem;"
         "margin-top:0.5rem;padding-top:0.5rem;border-top:1px dashed #e0e0e0;}"
