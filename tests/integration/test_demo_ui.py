@@ -40,11 +40,14 @@ async def test_demo_index_contains_run_controls_per_experiment(
         headers={"Origin": "http://testserver", "Accept": "text/html"},
     )
     body = response.text
-    # Each experiment exposes a vulnerable + defended trigger.
-    assert body.count('mode=vulnerable') >= 1
-    assert body.count('mode=defended') >= 1
-    # And points at the scenario route.
-    assert "/demo/scenario/" in body
+    # Cards render an agent-bar div per experiment; the dashboard JS
+    # injects "Run vulnerable" + "Run defended" buttons into it on
+    # page load and they dispatch via the agent route.
+    assert body.count("class='agent-bar'") >= 25
+    assert body.count("class='agent-result'") >= 25
+    # The agent endpoint and the dashboard status route are wired in.
+    assert "/demo/agent/" in body
+    assert "/demo/agent/status" in body
 
 
 async def test_demo_index_shows_observable_impact_artifact_paths(
@@ -84,12 +87,13 @@ async def test_demo_run_returns_json_and_records_event(
 async def test_demo_run_accepts_form_post_from_dashboard_button(
     client: AsyncClient,
 ) -> None:
-    """The /demo cards render <form method=post> with mode=<value>;
-    browsers POST application/x-www-form-urlencoded. The route must
-    accept that body shape (programmatic JSON callers also still
-    work, see the test above). When the request comes from a browser
-    (Accept: text/html), the response is a 303 redirect to the
-    compare view; programmatic clients get JSON."""
+    """The /demo/scenario/<id> endpoint accepts both JSON and
+    application/x-www-form-urlencoded bodies; the dashboard cards no
+    longer surface form-post buttons (the agent flow is the primary
+    UX), but the endpoint remains available for tests, programmatic
+    callers and as a fallback diagnostic. When the request comes from
+    a browser (Accept: text/html), the response is a 303 redirect to
+    the compare view; programmatic clients get JSON."""
 
     # Browser-style: form body + Accept: text/html -> 303 to /compare/...
     response = await client.post(

@@ -20,12 +20,13 @@ und JSONL-Telemetry.
 
 - **Eine Demo, kein Penetrations-Tool.** Jeder Angriff arbeitet mit
   Canary-Daten und Fake-Targets - keine echte Mail, keine echten
-  Tokens, keine echten Outbound-Requests an Drittanbieter-APIs.
-  **Default: kein echtes LLM.** Optional kann das Dashboard einen
-  server-seitigen `gemini-3.1-flash-lite`-Agenten aktivieren
-  (`DEMO_GEMINI_ENABLED=1` + `GEMINI_API_KEY`); das ist der einzige
-  Outbound-Pfad und ist opt-in (siehe Abschnitt
-  *Optional: Gemini Flash Lite Agent* unten).
+  Tokens, keine echten Outbound-Requests an Drittanbieter-Ziel-APIs.
+  Die Demo ist agentisch: ein server-seitiger
+  `gemini-3.1-flash-lite`-Agent fährt jeden Run gegen die live MCP-
+  Server. Dies ist der einzige Outbound-Pfad (an
+  `generativelanguage.googleapis.com`) und wird per `GEMINI_API_KEY`
+  konfiguriert; die Sicherheitsgrenze ist "keine echten Drittanbieter-
+  Ziele und nur `.example`-TLD-Mocks", nicht "kein echtes LLM".
 - **Vulnerable vs. defended.** Pro Experiment laeuft derselbe Pfad zwei
   Mal: einmal mit fehlender Mitigation, einmal mit eingebauter Policy.
   Der Unterschied ist immer in der UI, im Telemetry-Log und im
@@ -56,13 +57,12 @@ Anschliessend:
   ImpactEvents in Echtzeit; das `/demo`-UI subscribed darauf.
 - `http://127.0.0.1:8000/healthz` und `/readyz` - Probes.
 
-### Optional: Gemini Flash Lite Agent
+### Gemini Flash Lite Agent (erforderlich)
 
-Per Default ist der Agent aus und die Demo bleibt mock-only.
-Aktivieren:
+Der Agent ist der Demo. Setze einen Google-AI-Studio-Key, dann starte
+den Server:
 
 ```bash
-export DEMO_GEMINI_ENABLED=1
 export GEMINI_API_KEY=<your-google-ai-studio-key>
 # Optional:
 # export DEMO_GEMINI_MODEL=gemini-3.1-flash-lite   # Default
@@ -72,20 +72,22 @@ uv run uvicorn mcp_demo.app:create_app \
   --factory --host 127.0.0.1 --port 8000
 ```
 
-Das Dashboard zeigt dann pro Karte einen *Run with Gemini Flash Lite
-(vulnerable/defended)*-Knopf zusaetzlich zu den Simulator-Knoepfen.
+Das Dashboard zeigt pro Karte einen *Run vulnerable* / *Run defended*-
+Knopf; beide loesen einen live Agent-Run aus.
 `POST /demo/agent/<experiment-id>` listet die live MCP-Tools (real
 oder vergiftet, je nach Modus), schickt sie samt manifestiertem
 `user_task` als Function-Declarations an `gemini-3.1-flash-lite`,
 dispatcht jeden Function-Call in-process gegen denselben FastMCP und
 liefert das vollstaendige Transcript an die UI zurueck. Server-side
-Telemetry/Ledger feuern wie bei jedem anderen MCP-Aufruf; die
+Telemetry/Ledger feuern wie bei jedem MCP-Aufruf; die
 `/demo/events`-Timeline und der Live-Feed reflektieren jeden Schritt.
 
-Hinweis: Dies ist der einzige Pfad, der echte Outbound-Requests
-(an `generativelanguage.googleapis.com`) macht. Public-Mode hat keinen
-zusaetzlichen Gate dafuer; wer die Demo oeffentlich anbietet und
-gleichzeitig Gemini aktiviert, akzeptiert das Egress-Profil bewusst.
+Public-Mode (`DEMO_PUBLIC_MODE=1`) verlangt `GEMINI_API_KEY`
+gleichberechtigt zu einem Non-Default `DEMO_ADMIN_TOKEN` und schlaegt
+beim Start fehl, falls beide nicht gesetzt sind. Fuer Kubernetes liegt
+ein SOPS-verschluesselter Wert (`deploy/helm/mcp-demo/values.sops.yaml`)
+neben der Helm-Chart, der via ArgoCD `secrets://` valueFiles
+entschluesselt wird.
 
 ### Docker
 

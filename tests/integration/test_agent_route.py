@@ -39,8 +39,9 @@ def _settings(**overrides):
 
 
 @pytest.fixture
-async def gemini_off_client():
-    """Default settings - Gemini is off."""
+async def gemini_misconfigured_client():
+    """Deployment is missing GEMINI_API_KEY - the only state in which
+    the agent route is not live."""
     app = create_app(settings=_settings())
     async with LifespanManager(app):
         async with AsyncClient(
@@ -52,11 +53,10 @@ async def gemini_off_client():
 
 @pytest.fixture
 async def gemini_on_client():
-    """Gemini enabled with a fake api key (the underlying google.genai
-    client is mocked at the call site, so the key value is never used
-    over the wire)."""
+    """Agent fully wired with a fake api key (google.genai client is
+    mocked at the call site, so the key value is never used over the
+    wire)."""
     app = create_app(settings=_settings(
-        gemini_enabled=True,
         gemini_api_key="fake-key-for-testing",
         gemini_model="gemini-3.1-flash-lite",
         gemini_max_steps=3,
@@ -69,26 +69,13 @@ async def gemini_on_client():
             yield ac
 
 
-async def test_agent_status_disabled_when_feature_off(gemini_off_client):
-    resp = await gemini_off_client.get(
+async def test_agent_status_disabled_when_api_key_missing(
+    gemini_misconfigured_client,
+):
+    resp = await gemini_misconfigured_client.get(
         "/demo/agent/status",
         headers={"Origin": "http://testserver"},
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["enabled"] is False
-    assert "DEMO_GEMINI_ENABLED" in body["reason"]
-
-
-async def test_agent_status_disabled_when_api_key_missing():
-    app = create_app(settings=_settings(gemini_enabled=True))
-    async with LifespanManager(app):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://testserver",
-        ) as ac:
-            resp = await ac.get("/demo/agent/status",
-                                headers={"Origin": "http://testserver"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["enabled"] is False
@@ -107,14 +94,14 @@ async def test_agent_status_enabled(gemini_on_client):
     assert body["max_steps"] == 3
 
 
-async def test_agent_run_disabled_returns_503(gemini_off_client):
-    resp = await gemini_off_client.post(
+async def test_agent_run_missing_key_returns_503(gemini_misconfigured_client):
+    resp = await gemini_misconfigured_client.post(
         "/demo/agent/remote-direct-poisoning",
         headers={"Origin": "http://testserver"},
         json={"mode": "vulnerable"},
     )
     assert resp.status_code == 503
-    assert resp.json()["error"] == "gemini_disabled"
+    assert resp.json()["error"] == "gemini_misconfigured"
 
 
 async def test_agent_run_unknown_experiment_404(gemini_on_client):

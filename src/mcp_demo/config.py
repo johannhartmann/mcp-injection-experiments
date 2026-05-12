@@ -32,13 +32,15 @@ class DemoSettings:
     server_version: str = "0.0.1"
     admin_token: str = "local-dev"
     public_mode: bool = False
-    # Optional opt-in: server-side Gemini Flash Lite agent. When enabled,
-    # the dashboard exposes a "Run with Gemini Flash Lite" button per
-    # experiment which posts to /demo/agent/<id>; the route lists the
-    # live MCP tools, lets the model pick one via native function calling
-    # and dispatches the call in-process. Disabled by default because it
-    # makes a real outbound API call (the rest of the demo is mock-only).
-    gemini_enabled: bool = False
+    # Server-side Gemini Flash Lite agent: this IS the demo. The dashboard
+    # cards expose "Run with Gemini Flash Lite (vulnerable/defended)" which
+    # POSTs to /demo/agent/<id>; the route lists the live MCP tools, lets
+    # the model pick one via native function calling and dispatches the
+    # call in-process. The agent makes real outbound calls to
+    # ``generativelanguage.googleapis.com``; the safety boundary is "no
+    # real third-party target APIs / no real secrets / only .example
+    # mocks", not "no real LLM". Public mode requires ``gemini_api_key``
+    # the same way it requires a non-default ``admin_token``.
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.1-flash-lite"
     gemini_max_steps: int = 5
@@ -57,9 +59,6 @@ class DemoSettings:
         public_mode = os.environ.get("DEMO_PUBLIC_MODE", "").lower() in {
             "1", "true", "yes",
         }
-        gemini_enabled = os.environ.get("DEMO_GEMINI_ENABLED", "").lower() in {
-            "1", "true", "yes",
-        }
         gemini_api_key = os.environ.get("GEMINI_API_KEY") or None
         gemini_model = os.environ.get(
             "DEMO_GEMINI_MODEL", "gemini-3.1-flash-lite"
@@ -72,7 +71,6 @@ class DemoSettings:
             allowed_origins=origins,
             admin_token=admin_token,
             public_mode=public_mode,
-            gemini_enabled=gemini_enabled,
             gemini_api_key=gemini_api_key,
             gemini_model=gemini_model,
             gemini_max_steps=gemini_max_steps,
@@ -88,7 +86,6 @@ class DemoSettings:
             server_version=self.server_version,
             admin_token=self.admin_token,
             public_mode=True,
-            gemini_enabled=self.gemini_enabled,
             gemini_api_key=self.gemini_api_key,
             gemini_model=self.gemini_model,
             gemini_max_steps=self.gemini_max_steps,
@@ -108,6 +105,11 @@ class DemoSettings:
             )
         if not self.allowed_origins:
             problems.append("allowed_origins must not be empty in public mode")
+        if not self.gemini_api_key:
+            problems.append(
+                "gemini_api_key must be set in public mode (the agent flow is "
+                "the core demo)"
+            )
         if problems:
             raise ValueError(
                 "DemoSettings is unsafe for public deployment: "

@@ -115,7 +115,6 @@ def _impact_block(manifest: Any) -> str:
 def _card_html(manifest: Any) -> str:
     import html as _html
 
-    action = f"/demo/scenario/{manifest.id}"
     compare_href = f"/demo/compare/{manifest.id}"
     slug = manifest.id.removeprefix("remote-")
     owasp = ", ".join(manifest.owasp)
@@ -124,25 +123,20 @@ def _card_html(manifest: Any) -> str:
         if getattr(manifest, "user_task", None)
         else ""
     )
+    # The card's primary action is the live agent run; the dashboard JS
+    # injects "Run with Gemini Flash Lite (vulnerable/defended)" into the
+    # agent-bar div on page load. The /demo/scenario/<id> endpoint stays
+    # available for the test suite and for programmatic callers, but the
+    # UI does not surface it - the agentic flow is the demo.
     return (
         f"<section class='card' data-experiment='{manifest.id}' "
         f"data-slug='{slug}' {user_task_attr}>"
         f"<h2>{manifest.title}</h2>"
         f"<p class='id'><code>{manifest.id}</code></p>"
         f"<p class='owasp'>OWASP: {owasp}</p>"
-        f"<div class='run-bar'>"
-        f"<form method='post' action='{action}' "
-        f"data-mode='vulnerable' data-action-mode='mode=vulnerable'>"
-        f"<button type='submit' name='mode' value='vulnerable'>"
-        f"Run vulnerable</button></form>"
-        f"<form method='post' action='{action}' "
-        f"data-mode='defended' data-action-mode='mode=defended'>"
-        f"<button type='submit' name='mode' value='defended'>"
-        f"Run defended</button></form>"
         f"<a class='compare-link' href='{compare_href}'>"
         f"Compare side-by-side &rarr;</a>"
-        f"</div>"
-        f"<div class='agent-bar' hidden></div>"
+        f"<div class='agent-bar'></div>"
         f"<div class='agent-result' hidden></div>"
         f"{_impact_block(manifest)}"
         f"</section>"
@@ -359,36 +353,35 @@ _DASHBOARD_JS = r"""
   }
 
   async function wireCards() {
+    // The agent IS the demo - the cards always show Run buttons,
+    // regardless of status. Status banner reports the model + step
+    // budget, or surfaces a deploy misconfiguration (missing key).
     var status;
     try { status = await fetchAgentStatus(); }
     catch (err) {
-      setStatus('warn',
-        'Could not check Gemini Flash Lite status: ' + String(err) +
-        '. The deterministic Python-simulator Run buttons above still work.');
-      return;
+      setStatus('err',
+        'Could not reach /demo/agent/status: ' + String(err));
     }
-    if (!status.enabled) {
-      setStatus('warn',
-        'Gemini Flash Lite (server) is disabled: ' + (status.reason || 'unknown') +
-        '. Set DEMO_GEMINI_ENABLED=1 and GEMINI_API_KEY to enable. The ' +
-        'deterministic Python-simulator Run buttons above still work.');
-      return;
+    if (status && status.enabled) {
+      setStatus('ok',
+        'Gemini Flash Lite (' + (status.model || 'default') + ', up to ' +
+        (status.max_steps || 5) + ' steps) drives every card. Click any ' +
+        'Run button to dispatch the live model against the corresponding ' +
+        'MCP server.');
+    } else if (status) {
+      setStatus('err',
+        'Deployment is missing GEMINI_API_KEY: ' +
+        (status.reason || 'agent disabled') +
+        '. Run buttons will return a 503 until the key is wired in.');
     }
-    setStatus('ok',
-      'Gemini Flash Lite (server) is available (' + (status.model || 'default') +
-      ', up to ' + (status.max_steps || 5) + ' steps). Click "Run with ' +
-      'Gemini Flash Lite" on any card to dispatch the real model against ' +
-      'the live MCP server.');
 
     var cards = document.querySelectorAll('.card[data-slug]');
     cards.forEach(function (card) {
       var bar = card.querySelector('.agent-bar');
       if (!bar) return;
-      bar.hidden = false;
-      bar.appendChild(el('span', { class: 'agent-label', text: 'Real model:' }));
       ['vulnerable', 'defended'].forEach(function (mode) {
         var btn = el('button', { type: 'button' }, [
-          'Run with Gemini Flash Lite (' + mode + ')'
+          'Run ' + mode
         ]);
         btn.addEventListener('click', function () { runAgent(card, mode); });
         bar.appendChild(btn);
@@ -590,16 +583,16 @@ def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
         "<h1>MCP Demo Experiments</h1>"
         "<p>25 MCP injection experiments grouped by OWASP MCP Top 10 "
         "family. Every experiment exposes a <em>vulnerable</em> and a "
-        "<em>defended</em> mode. The <strong>Run</strong> buttons drive "
-        "a deterministic Python simulator of what an injected agent "
-        "would do. When <code>DEMO_GEMINI_ENABLED=1</code> and "
-        "<code>GEMINI_API_KEY</code> are set, every card also gets a "
-        "<strong>Run with Gemini Flash Lite</strong> pair that hosts a "
-        "real server-side <code>gemini-3.1-flash-lite</code> agent: it "
-        "lists the live MCP server's tools, lets the model pick tools + "
-        "args via native function calling, and dispatches each call "
-        "in-process against the same FastMCP instance (multi-step, "
-        "bounded). The full event timeline lives at "
+        "<em>defended</em> mode. Clicking "
+        "<strong>Run with Gemini Flash Lite</strong> on any card hosts a "
+        "server-side <code>gemini-3.1-flash-lite</code> agent that lists "
+        "the live MCP server's tools, picks one via native function "
+        "calling, and dispatches the call in-process against the same "
+        "FastMCP instance (multi-step, bounded). The agent makes real "
+        "outbound calls to <code>generativelanguage.googleapis.com</code>; "
+        "the safety boundary is no real third-party target APIs and "
+        "<code>.example</code>-TLD mocks, not no real LLM. The full "
+        "event timeline lives at "
         "<a href='/demo/events'>/demo/events</a>.</p>"
         "<div id='agent-status' class='agent-status' hidden></div>"
         f"{body}"
@@ -687,19 +680,12 @@ def build_demo_router(
 
     @router.get("/agent/status")
     async def agent_status(request: Request) -> Response:
-        # Read-only feature-detect for the Flash Lite path. Browsers send
-        # no Origin on top-level GETs; reject only the explicit
-        # cross-origin case.
+        # The agent IS the demo. Status reports the live model + step
+        # budget; only returns enabled=false when the deployer forgot to
+        # set GEMINI_API_KEY (a deploy misconfig, not a feature toggle).
         if request.headers.get("origin") and not _origin_ok(request):
             return _forbidden("origin not allowlisted")
         settings = request.app.state.settings
-        if not settings.gemini_enabled:
-            return JSONResponse(
-                {
-                    "enabled": False,
-                    "reason": "DEMO_GEMINI_ENABLED is off",
-                }
-            )
         if not settings.gemini_api_key:
             return JSONResponse(
                 {
@@ -721,15 +707,13 @@ def build_demo_router(
         if not _origin_ok(request):
             return _forbidden("origin not allowlisted")
         settings = request.app.state.settings
-        if not settings.gemini_enabled:
-            return JSONResponse(
-                status_code=503,
-                content={"error": "gemini_disabled", "reason": "DEMO_GEMINI_ENABLED is off"},
-            )
         if not settings.gemini_api_key:
             return JSONResponse(
                 status_code=503,
-                content={"error": "gemini_disabled", "reason": "GEMINI_API_KEY is not set"},
+                content={
+                    "error": "gemini_misconfigured",
+                    "reason": "GEMINI_API_KEY is not set on this deployment",
+                },
             )
         if experiment_id not in registry:
             return JSONResponse(

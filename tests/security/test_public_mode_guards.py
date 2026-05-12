@@ -76,6 +76,9 @@ def test_public_mode_accepts_safe_settings() -> None:
     settings = DemoSettings(
         admin_token="prod-secret-please-change",
         allowed_origins=("https://demo.example.com",),
+        # Agent IS the demo; public mode requires a Gemini API key the
+        # same way it requires a non-default admin token.
+        gemini_api_key="fake-public-mode-key",
     )
     app = create_app(settings=settings.with_public_mode())  # type: ignore[attr-defined]
     assert app is not None
