@@ -50,6 +50,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "mcp-demo.fullname" . }}-admin
                   key: admin-token
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mcp-demo.fullname" . }}-admin
+                  key: gemini-api-key
           # The container needs four writable paths at runtime: telemetry
           # JSONL, mock-inbox, sandbox file proofs, and the
           # filesystem-escape demo's allowed/outside dirs. emptyDir{}

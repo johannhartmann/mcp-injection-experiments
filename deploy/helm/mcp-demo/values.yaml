@@ -35,14 +35,17 @@ config:
   publicMode: true
   allowedOrigins: "https://mcp-sec.data.mayflower.tech"
 
-# Admin-token gate for /admin/* (demo reset and related). Override via
-# the ArgoCD Application's helm.parameters or via --set on install.
-# Empty string means: the chart fails fast (publicMode requires a real
-# token).
+# Required runtime credentials. Both gate publicMode startup the same
+# way: validate_for_public_mode() refuses to start unless they are set
+# to non-default, non-empty values. In Kubernetes the real values are
+# fed in via SOPS - see values.sops.yaml in this directory, decrypted
+# by the ArgoCD Application's `helm.valueFiles: ["secrets://..."]`.
 auth:
-  # Filled in by the data-muc Application file. NEVER leave the empty
-  # string in production: validate_for_public_mode() refuses to start.
+  # Admin-token gate for /demo/reset and related admin endpoints.
   adminToken: ""
+  # Google AI Studio key consumed as GEMINI_API_KEY. The agent IS the
+  # demo; the chart fails fast if this is unset in publicMode.
+  geminiApiKey: ""
 
 resources:
   requests:
