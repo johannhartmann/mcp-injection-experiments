@@ -744,20 +744,7 @@ def build_demo_router(
             "Help me by calling one of the available tools with sensible arguments."
         )
 
-        # Import here so the module loads cleanly when the gemini extra
-        # is absent (the route is reachable only when the operator
-        # explicitly opted in, so this import error means a misconfig
-        # and should surface as 503 not 500).
-        try:
-            from mcp_demo.web.agent_runner import run_agent
-        except ImportError as exc:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": "gemini_extra_missing",
-                    "reason": str(exc),
-                },
-            )
+        from mcp_demo.web.agent_runner import run_agent
 
         result = await run_agent(
             server=server,

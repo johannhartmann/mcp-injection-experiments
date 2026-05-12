@@ -523,15 +523,13 @@ name = "mcp-demo"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "google-genai" },
     { name = "mcp" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
-gemini = [
-    { name = "google-genai" },
-]
 http = [
     { name = "fastapi" },
     { name = "starlette" },
@@ -549,14 +547,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", marker = "extra == 'http'", specifier = ">=0.111,<1" },
-    { name = "google-genai", marker = "extra == 'gemini'", specifier = ">=0.3,<2" },
+    { name = "google-genai", specifier = ">=0.3,<2" },
     { name = "mcp", specifier = ">=1.27.1" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "starlette", marker = "extra == 'http'", specifier = ">=0.37,<1" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'http'", specifier = ">=0.30,<1" },
 ]
-provides-extras = ["http", "gemini"]
+provides-extras = ["http"]
 
 [package.metadata.requires-dev]
 dev = [

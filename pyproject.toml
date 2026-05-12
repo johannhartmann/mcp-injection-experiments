@@ -10,6 +10,12 @@ dependencies = [
     "mcp>=1.27.1",
     "pydantic>=2.7,<3",
     "pyyaml>=6,<7",
+    # google-genai is required: the server-side gemini-3.1-flash-lite
+    # agent IS the demo. The /demo/agent/<id> route imports
+    # google.genai unconditionally and the production image must ship
+    # with it. The deployment refuses to start unless GEMINI_API_KEY
+    # is set (validate_for_public_mode).
+    "google-genai>=0.3,<2",
 ]
 
 [project.optional-dependencies]
@@ -17,9 +23,6 @@ http = [
     "fastapi>=0.111,<1",
     "starlette>=0.37,<1",
     "uvicorn[standard]>=0.30,<1",
-]
-gemini = [
-    "google-genai>=0.3,<2",
 ]
 
 [dependency-groups]
