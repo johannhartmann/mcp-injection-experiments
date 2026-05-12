@@ -210,12 +210,30 @@ def create_app(
     mcp_servers_by_experiment: dict[str, dict[str, FastMCP]] = {}
 
     @contextlib.asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(app_in: FastAPI):
         async with contextlib.AsyncExitStack() as stack:
             for server in mcp_servers:
                 await stack.enter_async_context(
                     server.session_manager.run()
                 )
+            # Snapshot each mounted FastMCP's tools/list so the
+            # dashboard can render "what the agent actually reads"
+            # without paying 50 in-process list_tools() calls per
+            # page load. Descriptions are static for the app's
+            # lifetime (poisoned-vs-sanitised is decided at registration).
+            tool_snapshot: dict[str, dict[str, list[dict]]] = {}
+            for eid, by_mode in mcp_servers_by_experiment.items():
+                tool_snapshot[eid] = {}
+                for mode_name, server in by_mode.items():
+                    tools = await server.list_tools()
+                    tool_snapshot[eid][mode_name] = [
+                        {
+                            "name": t.name,
+                            "description": t.description or "",
+                        }
+                        for t in tools
+                    ]
+            app_in.state.tool_descriptions_by_experiment = tool_snapshot
             yield
 
     app = FastAPI(

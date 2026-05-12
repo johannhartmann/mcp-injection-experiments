@@ -112,7 +112,92 @@ def _impact_block(manifest: Any) -> str:
     return "<h4>Observable Impact</h4><ul>" + "".join(rows) + "</ul>"
 
 
-def _card_html(manifest: Any) -> str:
+import re as _re
+
+# Bait wrapper an attacker plants in tool descriptions. We highlight
+# this block in the dashboard card so the visitor can see the malicious
+# imperative at a glance. The match runs on already-HTML-escaped text
+# (``html.escape`` turns ``<IMPORTANT>`` into ``&lt;IMPORTANT&gt;``).
+_ESCAPED_INJECTION_BLOCK = _re.compile(
+    r"&lt;IMPORTANT&gt;[\s\S]*?&lt;/IMPORTANT&gt;", _re.IGNORECASE
+)
+
+
+def _render_poisoned_block(
+    tools_v: list[dict] | None,
+    tools_d: list[dict] | None,
+) -> str:
+    """Show the vulnerable mode's tool descriptions on the card so the
+    visitor can read the bait *before* clicking Run. Highlights the
+    ``<IMPORTANT>`` blocks in red, and notes per tool whether the
+    defended mode publishes the same description, a sanitised one, or
+    drops the tool entirely."""
+
+    import html as _html
+
+    if not tools_v:
+        return ""
+
+    by_name_d = {t["name"]: t for t in (tools_d or [])}
+    parts: list[str] = []
+    for t in tools_v:
+        name = t["name"]
+        desc = t.get("description") or ""
+        d_entry = by_name_d.get(name)
+        d_desc = d_entry["description"] if d_entry else None
+
+        # Escape first, then highlight the (now-escaped) IMPORTANT
+        # block so the model-directed imperative the attacker plants
+        # stands out visually without re-introducing raw HTML.
+        escaped = _html.escape(desc)
+        highlighted = _ESCAPED_INJECTION_BLOCK.sub(
+            lambda m: f"<span class='poison'>{m.group(0)}</span>",
+            escaped,
+        )
+
+        if d_entry is None:
+            note = (
+                "<span class='diff-note vuln'>"
+                "(this tool is not published in defended mode &mdash; the "
+                "linter refused to register a description carrying a "
+                "cross-tool argument-rewrite finding)</span>"
+            )
+        elif d_desc == desc:
+            note = (
+                "<span class='diff-note same'>"
+                "(defended mode publishes the same description &mdash; the "
+                "policy lives in the server-side handler, not in the "
+                "metadata)</span>"
+            )
+        else:
+            note = (
+                "<details class='def-desc'>"
+                "<summary>What defended mode publishes instead</summary>"
+                f"<pre>{_html.escape(d_desc or '')}</pre>"
+                "</details>"
+            )
+
+        parts.append(
+            f"<div class='tool-desc'>"
+            f"<div class='tool-name'><code>{_html.escape(name)}</code></div>"
+            f"<pre class='vuln-desc'>{highlighted}</pre>"
+            f"{note}"
+            f"</div>"
+        )
+
+    return (
+        "<details class='poisoned'>"
+        "<summary>What the agent reads from this MCP server "
+        "(vulnerable tool descriptions)</summary>"
+        + "".join(parts)
+        + "</details>"
+    )
+
+
+def _card_html(
+    manifest: Any,
+    tool_snapshot_for_experiment: dict[str, list[dict]] | None = None,
+) -> str:
     import html as _html
 
     compare_href = f"/demo/compare/{manifest.id}"
@@ -123,6 +208,11 @@ def _card_html(manifest: Any) -> str:
         f"data-user-task='{_html.escape(user_task, quote=True)}' "
         if user_task
         else ""
+    )
+
+    snapshot = tool_snapshot_for_experiment or {}
+    poisoned_block = _render_poisoned_block(
+        snapshot.get("vulnerable"), snapshot.get("defended")
     )
 
     # The hand-written narrative paragraphs explain what the attack is
@@ -170,6 +260,7 @@ def _card_html(manifest: Any) -> str:
         f"<p class='id'><code>{manifest.id}</code> &middot; OWASP: "
         f"{owasp}</p>"
         f"{story_block}"
+        f"{poisoned_block}"
         f"{task_block}"
         f"<div class='agent-bar'></div>"
         f"<div class='agent-result' hidden></div>"
@@ -179,11 +270,16 @@ def _card_html(manifest: Any) -> str:
     )
 
 
-def _grouped_sections(manifests: list[Any]) -> str:
-    """Render the remaining (non-hero) cards as collapsible buckets
-    keyed by primary OWASP code, so a visitor scans 7 group titles
-    instead of 24 raw cards."""
+def _grouped_sections(
+    manifests: list[Any],
+    tool_snapshot: dict[str, dict[str, list[dict]]] | None = None,
+) -> str:
+    """Render cards into collapsible buckets keyed by primary OWASP
+    code so a visitor scans 7 group titles instead of 25 raw cards.
+    Threads the tool-description snapshot through to each card so it
+    can show the bait the model will actually read."""
 
+    snapshot = tool_snapshot or {}
     buckets: dict[str, list[Any]] = {}
     for manifest in manifests:
         primary = manifest.owasp[0] if manifest.owasp else "(uncategorised)"
@@ -193,7 +289,10 @@ def _grouped_sections(manifests: list[Any]) -> str:
     for code in sorted(buckets):
         label = _OWASP_LABELS.get(code, "")
         title = f"{code} &mdash; {label}" if label else code
-        cards = "".join(_card_html(m) for m in buckets[code])
+        cards = "".join(
+            _card_html(m, snapshot.get(m.id))
+            for m in buckets[code]
+        )
         parts.append(
             "<details class='group'>"
             f"<summary><strong>{title}</strong> "
@@ -611,27 +710,34 @@ _DASHBOARD_JS = r"""
 """
 
 
-def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
+def _render_index(
+    registry: ExperimentRegistry,
+    *,
+    base_url: str,
+    tool_descriptions: dict[str, dict[str, list[dict]]] | None = None,
+) -> str:
     """Render the dashboard.
 
     Layout: experiments grouped into collapsible buckets by primary
     OWASP code, then a single bottom section with the launch
     instructions for an external MCP Inspector (replacing the per-card
-    Inspector blocks the page used to repeat 25 times). When the server
-    has Gemini Flash Lite enabled (``DEMO_GEMINI_ENABLED=1`` +
-    ``GEMINI_API_KEY``), a client-side script injects a "Run with
-    Gemini Flash Lite" pair of buttons into each card alongside the
-    deterministic-simulator Run buttons.
+    Inspector blocks the page used to repeat 25 times). Each card
+    renders the manifest narrative, the user task, the vulnerable
+    tool descriptions the agent will actually read (with the
+    ``<IMPORTANT>`` injection block highlighted), and a "Run
+    vulnerable" / "Run defended" pair the JS wires up via the
+    /demo/agent/<id> route.
 
     ``base_url`` is the absolute origin a real browser would see (e.g.
     ``http://127.0.0.1:8000``). It is only interpolated into the bottom
-    "Open in MCP Inspector" section.
+    "Open in MCP Inspector" section. ``tool_descriptions`` is a
+    snapshot taken at lifespan start (``app.state.tool_descriptions_by_experiment``).
     """
 
     base_url = base_url.rstrip("/")
     all_manifests = list(registry.all())
     grouped = (
-        _grouped_sections(all_manifests)
+        _grouped_sections(all_manifests, tool_snapshot=tool_descriptions)
         if all_manifests
         else "<p><em>no experiments registered</em></p>"
     )
@@ -677,6 +783,33 @@ def _render_index(registry: ExperimentRegistry, *, base_url: str) -> str:
         ".story-label{font-weight:600;}"
         ".story-label.vuln{color:#b91c1c;}"
         ".story-label.def{color:#047857;}"
+        "details.poisoned{margin:0.6rem 0;padding:0.4rem 0.7rem;"
+        "background:#fff8eb;border:1px solid #f3c478;border-radius:5px;}"
+        "details.poisoned>summary{cursor:pointer;font-weight:600;"
+        "font-size:0.88rem;color:#8a4b00;}"
+        "details.poisoned>summary::-webkit-details-marker{display:none;}"
+        "details.poisoned>summary::before{content:'\\25b6';"
+        "display:inline-block;width:0.9rem;color:#a06200;"
+        "font-size:0.65rem;}"
+        "details.poisoned[open]>summary::before{transform:rotate(90deg);"
+        "transform-origin:50% 50%;}"
+        ".tool-desc{margin:0.5rem 0;}"
+        ".tool-desc .tool-name{font-family:ui-monospace,monospace;"
+        "font-size:0.82rem;color:#6a3500;margin-bottom:0.2rem;}"
+        ".tool-desc pre{margin:0;padding:0.45rem 0.65rem;background:#fff;"
+        "border:1px solid #f0d090;border-radius:3px;font-size:0.78rem;"
+        "white-space:pre-wrap;word-break:break-word;line-height:1.45;}"
+        ".tool-desc .poison{background:#fde2e2;color:#7f1d1d;"
+        "border-radius:2px;display:inline;}"
+        ".tool-desc .diff-note{display:block;font-size:0.78rem;"
+        "color:#6a3500;margin-top:0.3rem;font-style:italic;}"
+        ".tool-desc .diff-note.vuln{color:#9a2a2a;}"
+        ".tool-desc .diff-note.same{color:#555;font-style:italic;}"
+        ".tool-desc details.def-desc{margin-top:0.35rem;font-size:0.85rem;}"
+        ".tool-desc details.def-desc>summary{cursor:pointer;color:#047857;"
+        "font-weight:600;}"
+        ".tool-desc details.def-desc>pre{margin-top:0.3rem;"
+        "background:#f0fdf4;border-color:#a7e7c1;color:#063;}"
         ".user-task{margin:0.55rem 0;padding:0.45rem 0.7rem;"
         "background:#fffbe6;border-left:3px solid #d97706;border-radius:3px;"
         "font-size:0.9rem;}"
@@ -820,7 +953,14 @@ def build_demo_router(
         if request.headers.get("origin") and not _origin_ok(request):
             return _forbidden("origin not allowlisted")
         base_url = request.headers.get("origin") or str(request.base_url).rstrip("/")
-        return HTMLResponse(_render_index(registry, base_url=base_url))
+        tool_descriptions = getattr(
+            request.app.state, "tool_descriptions_by_experiment", None
+        )
+        return HTMLResponse(_render_index(
+            registry,
+            base_url=base_url,
+            tool_descriptions=tool_descriptions,
+        ))
 
     @router.post("/scenario/{experiment_id}")
     async def run_scenario(experiment_id: str, request: Request) -> Response:
